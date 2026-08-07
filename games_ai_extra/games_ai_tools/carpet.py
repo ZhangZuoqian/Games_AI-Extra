@@ -1,7 +1,7 @@
 import time
 
 from mcdreforged.command.command_source import CommandSource
-from games_ai.games_ai_tool import register_tool
+from games_ai.games_ai_tool import register_tool, register_bot_tool
 
 @register_tool(description="在服务器中生成一个假人。可以指定坐标(pos)在特定位置生成，或指定玩家名(player)在某个玩家身边生成。pos 和 player 互斥，只能二选一。两个都不填则在世界出生点生成。可选指定维度(dim)在特定维度（如 minecraft:the_nether）生成：若同时指定 pos 则在维度指定坐标生成，若不指定 pos 则在维度 ~ ~ ~ 位置生成。创建假人后需通过其他工具控制其行为。", parameters={
     "type": "object",
@@ -28,6 +28,7 @@ from games_ai.games_ai_tool import register_tool
     },
     "required": ["name"]
 })
+@register_bot_tool()
 def spawn_bot(source: CommandSource, ai_prefix: str, name: str, pos: list | None = None, player: str | None = None, dim: str | None = None):
     server = source.get_server()
     if source.is_player:
@@ -73,6 +74,7 @@ def spawn_bot(source: CommandSource, ai_prefix: str, name: str, pos: list | None
     },
     "required": ["name"]
 })
+@register_bot_tool()
 def kill_bot(source: CommandSource, ai_prefix: str, name: str):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在移除假人 {name} ...")

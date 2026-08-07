@@ -1,6 +1,6 @@
 {
     "id": "games_ai_extra",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "name": "GamesAI Extra",
     "description":{
         "zh_cn": "GamesAI的功能性扩展",
@@ -8,8 +8,17 @@
         "zh_tw": "GamesAI的功能性擴展"
     },
     "author": ["man8in", "yello"],
+    "link": "https://github.com/PengZixuan30/Games_AI-Extra",
+    "resources": [
+        "skills",
+        "README.md",
+        "README.zh-CN.md",
+        "README.zh-TW.md",
+        "LICENSE",
+        "CONTRIBUTING.md"
+    ],
     "dependencies": {
         "mcdreforged": ">=2.15.0",
-        "games_ai": ">=0.6.0"
+        "games_ai": ">=0.6.1"
     }
 }
