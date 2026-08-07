@@ -1,0 +1,13 @@
+{
+    "id": "carpet_tools",
+    "version": "0.0.1",
+    "name": "Carpet Tools",
+    "description":{
+        "zh_cn": ""
+    },
+    "author": "man8in",
+    "dependencies": {
+        "mcdreforged": ">=2.15.0",
+        "games_ai": ">=0.6.0"
+    }
+}
