@@ -162,6 +162,57 @@ If a required dependency is not installed, the corresponding tools will return a
 
 ## What's New
 
+### Version 0.3.0
+
+Adds low-priority but practical tools — **region snapshots**, **scoreboard management**, **chat log search**, and a **newbie guide** skill.
+
+- **🔧 New Technical Server Tools** (added to `technical_server` module)
+  - `region_snapshot` — list / query / restore region snapshots (requires region_snapshot MCDR plugin)
+  - `scoreboard_query` — query player / entity scoreboard scores
+  - `scoreboard_set` — set scoreboard scores (reset counters, init stats)
+  - `scoreboard_manage` — list / add / remove scoreboard objectives (with criterion support)
+- **💬 New Chat Log Module** (`chat_log` module, default ON)
+  - `search_chat_log` — search chat history by player / keyword / time range
+  - `clear_chat_log` — clear all chat logs (requires `confirm=true`)
+  - Auto-listens to `player_chat` events, stores as JSONL with auto-rotation (max 5000 records)
+- **📚 New Skills** — `chat_log.md` (chat search SOP), `newbie_guide.md` (newbie onboarding flow)
+- **💬 Chat Event Listener** — auto-records player chat to `config/games_ai_extra/chat_log.jsonl`
+- Bumped version to 0.3.0
+- Test coverage expanded to 139 cases (all passing)
+
+### Version 0.2.0
+
+Major update — adds 4 new tool modules for **technical (生电) servers**, **survival servers**, **economy**, and **batch bot operations**. All modules can be independently enabled/disabled via `config.json`.
+
+- **🔧 Technical Server Tools** (`technical_server` module, default ON)
+  - `get_server_tps` — TPS / MSPT / tick status (Carpet or spark)
+  - `count_entities` — entity count by type / area
+  - `carpet_rule_get` / `carpet_rule_set` — query / modify Carpet rules (e.g. `tntOptimization`)
+  - `forceload` — query / add / remove / remove_all chunk forceload
+  - `locate_structure` — locate strongholds, bastions, ancient cities, etc. (supports Chinese aliases)
+  - `convert_dimension_pos` — Overworld ↔ Nether coordinate conversion (1:8)
+  - `query_death_log` — query recent death records (auto-listens to `player_death` events)
+  - `set_tickrate` — temporarily adjust server tick rate
+  - `clear_entities` — bulk clear entities by type / area
+- **🏠 Survival Server Tools** (`survival_server` module, default ON)
+  - `tpa_request` / `home_manage` / `warp_manage` — teleport system (EssentialsX)
+  - `get_player_info` — online player list / details (pos, health, dim)
+  - `view_inventory` — view player inventory / enderchest / equipment
+  - `query_claim` — query land claim (GriefDefender / Residence / Lands)
+  - `set_weather` / `set_time` — weather / time control
+  - `broadcast` — server-wide announcement
+  - `backup_manage` — quick_backup_multi integration
+- **💰 Economy Tools** (`economy` module, default ON)
+  - `get_balance` — query player balance (Vault)
+  - `pay_player` — player-to-player transfer
+  - `price_list` — local price list (query / set / list / remove)
+- **🤖 Bot Group Operations** (`bot_group` module, default ON)
+  - `group_spawn` / `group_kill` / `group_action` — batch operations
+  - `save_group` / `group_run` / `group_list` / `group_delete` — save & reuse bot groups
+- **📚 New Skills** — `technical.md`, `survival.md`, `economy.md`, `bot_group.md`
+- **☠️ Death Event Listener** — auto-records player deaths to `config/games_ai_extra/death_log.json`
+- Bumped version to 0.2.0
+
 ### Version 0.1.2
 
 - Added `@register_bot_tool()` decorator to `spawn_bot` and `kill_bot` for Mineflayer Bot support

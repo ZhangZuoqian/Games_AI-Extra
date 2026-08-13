@@ -162,6 +162,57 @@ GamesAI Extra 通过 `register_skills()` 提供以下内置技能：
 
 ## 本次更新
 
+### Version 0.3.0
+
+新增低优先级但实用的工具 —— **历史结构截图**、**计分板管理**、**聊天记录搜索**，以及 **新手引导** skill。
+
+- **🔧 生电服新增工具**（添加到 `technical_server` 模块）
+  - `region_snapshot` — 列出 / 查询 / 恢复区域快照（需 region_snapshot MCDR 插件）
+  - `scoreboard_query` — 查询玩家 / 实体计分板分数
+  - `scoreboard_set` — 设置计分板分数（重置计数器、初始化统计）
+  - `scoreboard_manage` — 列出 / 创建 / 删除计分项（支持自定义准则）
+- **💬 新增聊天记录模块**（`chat_log` 模块，默认开启）
+  - `search_chat_log` — 按玩家 / 关键词 / 时间范围搜索聊天记录
+  - `clear_chat_log` — 清空所有聊天记录（需 `confirm=true`）
+  - 自动监听 `player_chat` 事件，以 JSONL 格式存储并自动滚动（最多 5000 条）
+- **📚 新增 Skills** — `chat_log.md`（聊天搜索 SOP）、`newbie_guide.md`（新手引导流程）
+- **💬 聊天事件监听** — 自动记录玩家聊天到 `config/games_ai_extra/chat_log.jsonl`
+- 版本号升至 0.3.0
+- 测试覆盖扩展至 139 个用例（全部通过）
+
+### Version 0.2.0
+
+重大更新 — 新增 4 个工具模块，覆盖**生电服**、**生存服**、**经济系统**和**批量假人**场景。所有模块均可通过 `config.json` 独立启用/禁用。
+
+- **🔧 生电服工具** (`technical_server` 模块，默认开启)
+  - `get_server_tps` — 查询 TPS / MSPT / tick 状态（Carpet 或 spark）
+  - `count_entities` — 按类型/区域统计实体数量
+  - `carpet_rule_get` / `carpet_rule_set` — 查询/修改 Carpet 规则（如 `tntOptimization`）
+  - `forceload` — 查询/添加/移除/清空区块强加载
+  - `locate_structure` — 定位要塞、堡垒遗迹、远古城市等（支持中文别名）
+  - `convert_dimension_pos` — 主世界↔下界坐标换算（1:8）
+  - `query_death_log` — 查询最近死亡记录（自动监听 `player_death` 事件）
+  - `set_tickrate` — 临时调整服务器 tick 速率
+  - `clear_entities` — 按类型/区域批量清理实体
+- **🏠 生存服工具** (`survival_server` 模块，默认开启)
+  - `tpa_request` / `home_manage` / `warp_manage` — 传送系统（EssentialsX）
+  - `get_player_info` — 在线玩家列表/详情（坐标、生命、维度）
+  - `view_inventory` — 查看玩家背包/末影箱/装备栏
+  - `query_claim` — 查询领地归属（GriefDefender / Residence / Lands）
+  - `set_weather` / `set_time` — 天气/时间控制
+  - `broadcast` — 全服公告广播
+  - `backup_manage` — quick_backup_multi 备份集成
+- **💰 经济系统** (`economy` 模块，默认开启)
+  - `get_balance` — 查询玩家余额（Vault）
+  - `pay_player` — 玩家间转账
+  - `price_list` — 本地价格表（查询/设置/列出/删除）
+- **🤖 批量假人** (`bot_group` 模块，默认开启)
+  - `group_spawn` / `group_kill` / `group_action` — 批量操作
+  - `save_group` / `group_run` / `group_list` / `group_delete` — 保存并复用假人组
+- **📚 新增技能文件** — `technical.md`、`survival.md`、`economy.md`、`bot_group.md`
+- **☠️ 死亡事件监听** — 自动记录玩家死亡到 `config/games_ai_extra/death_log.json`
+- 版本号升至 0.2.0
+
 ### Version 0.1.2
 
 - 为 `spawn_bot` 和 `kill_bot` 添加 `@register_bot_tool()` 装饰器，支持 Mineflayer Bot 调用

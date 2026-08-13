@@ -1,1 +1,4 @@
 *.mcdr
+__pycache__/
+*.pyc
+*.pyotests/
