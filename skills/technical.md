@@ -39,8 +39,10 @@
 
 ```
 get_server_tps()                    # 只看当前 TPS/MSPT
-get_server_tps(detail=True)         # 详细：5s/10s/1m 平均 TPS
+get_server_tps(detail=True)         # 详细：最近 100 tick 的最小/最大/平均耗时
 ```
+
+> **实现说明**：通过 Scarpet 的 `last_tick_times()`（最近 100 个 tick 耗时）自行计算 MSPT（平均值）与 TPS（min(20, 1000/MSPT)），无需 spark。注意 Scarpet 仅暴露最近 100 tick（约 5s）窗口，无法取更长时段。
 
 **判读标准**：
 - TPS = 20 → 满速，服务器正常

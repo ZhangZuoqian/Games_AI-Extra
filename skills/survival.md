@@ -27,7 +27,7 @@
 | `set_weather` | 设置天气 | `weather`, `duration?` |
 | `set_time` | 设置时间 | `time`, `mode?` |
 | `broadcast` | 全服公告 | `message` |
-| `backup_manage` | 备份管理 | `action`, `slot?` |
+| `backup_manage` | 备份管理 | `action`, `slot?`, `comment?` |
 
 ---
 
@@ -48,7 +48,7 @@ warp_manage(action="list")
 warp_manage(action="go", name="spawn")
 ```
 
-> 这些命令依赖 EssentialsX 插件。控制台无法发起，必须由玩家触发。
+> 这些命令依赖 EssentialsX 插件，均为玩家专属命令。本工具会向调用玩家发送**可点击消息**（tellraw），玩家点击后以本人身份执行，解决控制台无法代执行玩家命令的问题。控制台发起时会提示让玩家自行点击。
 
 ---
 
@@ -112,12 +112,14 @@ broadcast(message="今晚 8 点活动开始，请到主城集合！")
 ## 6. 备份管理（`backup_manage`）
 
 ```
-backup_manage(action="list")       # 列出已有备份
-backup_manage(action="make")       # 创建新备份
-backup_manage(action="confirm")    # 确认备份
+backup_manage(action="list")                          # 列出已有备份槽位
+backup_manage(action="make", comment="打boss前")        # 创建新备份（存至槽位1，已有后移）
+backup_manage(action="back", slot=1)                  # 发起回档请求（默认槽位1）
+backup_manage(action="confirm")                       # 确认回档（back 之后才生效）
+backup_manage(action="abort")                         # 中断回档
 ```
 
-> 依赖 quick_backup_multi MCDR 插件。建议重要操作前先 `make`。
+> 依赖 quick_backup_multi MCDR 插件。**回档是两步流程**：先 `back` 发起请求，再 `confirm` 确认才真正执行，防止误操作。建议重要操作前先 `make`。
 
 ---
 

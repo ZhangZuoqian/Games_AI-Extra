@@ -16,13 +16,13 @@ from games_ai.games_ai_tool import register_tool
 # ── 性能监控 ──────────────────────────────────────────────
 
 @register_tool(
-    description="查询服务器性能指标：TPS（每秒刻数）、MSPT（每刻毫秒数）。通过 fabric-carpet 的 script run 查询，无需 spark。生电服排查卡顿必备。",
+    description="查询服务器性能指标：TPS（每秒刻数）、MSPT（每刻毫秒数）。通过 fabric-carpet 的 Scarpet 脚本读取最近 100 tick 的耗时计算，无需 spark。生电服排查卡顿必备。注意：Scarpet 仅暴露最近 100 tick（约 5s）窗口，无法取更长时段。",
     parameters={
         "type": "object",
         "properties": {
             "detail": {
                 "type": "boolean",
-                "description": "可选。是否返回详细信息（包括最近 5s/10s/1m 的 TPS）。默认 false 只返回当前 TPS/MSPT。"
+                "description": "可选。是否返回详细信息（最近 100 tick 的最小/最大/平均耗时）。默认 false 只返回当前 TPS/MSPT。"
             }
         }
     }
@@ -30,10 +30,18 @@ from games_ai.games_ai_tool import register_tool
 def get_server_tps(source: CommandSource, ai_prefix: str, detail: bool = False):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在查询服务器性能...")
-    # fabric-carpet 是本插件硬依赖，script run 一定可用
-    server.execute("script run print('TPS=' + str(tps()) + ' MSPT=' + str(mspt()))")
+    # Scarpet 没有内置 tps()/mspt()，用 last_tick_times()（最近 100 tick 耗时 ms 列表）自行计算
+    # MSPT = 平均每 tick 耗时；TPS = min(20, 1000/MSPT)
+    server.execute(
+        "script run mspt()->(s=0;for(last_tick_times(),s+=_);s/100);"
+        "print('MSPT='+mspt()+' TPS='+min(20,1000/mspt()))"
+    )
     if detail:
-        server.execute("script run print('TPS_5s=' + str(tps(5*20)) + ' TPS_10s=' + str(tps(10*20)) + ' TPS_1m=' + str(tps(20*60)))")
+        # 显示最近 100 tick 的最小/最大/平均耗时，定位偶发卡顿
+        server.execute(
+            "script run print('min='+min(last_tick_times())+' max='+max(last_tick_times())"
+            "+' avg='+(s=0;for(last_tick_times(),s+=_);s/100))"
+        )
     return "已通过 carpet script 查询性能，结果请查看服务器控制台或聊天栏。TPS=20 表示满速，<20 表示卡顿；MSPT>50 表示服务器超载。"
 
 

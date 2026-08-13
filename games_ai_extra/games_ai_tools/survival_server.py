@@ -80,7 +80,6 @@ def tpa_request(source: CommandSource, ai_prefix: str, target: str):
     }
 )
 def home_manage(source: CommandSource, ai_prefix: str, action: str, name: str = None):
-    server = source.get_server()
     if action == "set":
         if not name:
             return "set 操作必须指定 home 名称"
@@ -92,8 +91,8 @@ def home_manage(source: CommandSource, ai_prefix: str, action: str, name: str = 
         source.reply(f"{ai_prefix}正在准备删除家 {name}...")
         return _send_clickable_cmd(source, "点击删除家", f"delhome {name}")
     elif action == "list":
-        server.execute("homes")
-        return "已请求列出所有家，结果请查看聊天栏"
+        source.reply(f"{ai_prefix}正在准备列出你的家...")
+        return _send_clickable_cmd(source, "点击列出我的家", "homes", "homes 是玩家专属命令（/home 的别名），需本人执行")
     elif action == "go":
         if not name:
             return "go 操作必须指定 home 名称"
@@ -280,28 +279,50 @@ def broadcast(source: CommandSource, ai_prefix: str, message: str):
 # ── 备份查询/触发（MCDR 插件命令，控制台可执行）────────────
 
 @register_tool(
-    description="查询或触发服务器备份。需要 MCDR 安装 quick_backup_multi 插件。生存服防熊/防回档必备。",
+    description="管理服务器备份（基于 MCDR 的 quick_backup_multi 插件）。生存服防熊/防回档必备。回档流程：先 back 发起回档请求，再 confirm 确认才真正执行（两步确认防止误操作）。",
     parameters={
         "type": "object",
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["list", "make", "confirm"],
-                "description": "操作：list=列出已有备份，make=创建新备份，confirm=确认备份（如果插件需要）"
+                "enum": ["list", "make", "back", "confirm", "abort"],
+                "description": "操作：list=列出备份槽位，make=创建新备份（存至槽位1，已有后移），back=发起回档请求（需再用 confirm 确认），confirm=确认回档，abort=中断回档"
+            },
+            "slot": {
+                "type": "integer",
+                "description": "可选。back 时指定回档到哪个槽位（默认1）。"
+            },
+            "comment": {
+                "type": "string",
+                "description": "可选。make 时的备份注释。"
             }
         },
         "required": ["action"]
     }
 )
-def backup_manage(source: CommandSource, ai_prefix: str, action: str):
+def backup_manage(source: CommandSource, ai_prefix: str, action: str, slot: int = None, comment: str = None):
     server = source.get_server()
     if action == "list":
         server.execute("!!qb list")
         return "已请求备份列表，结果请查看聊天栏。若无响应，说明服务端未安装 quick_backup_multi 插件。"
     elif action == "make":
-        server.execute("!!qb make")
-        return "已触发创建新备份。若无响应，说明服务端未安装 quick_backup_multi 插件。"
+        cmd = "!!qb make"
+        if comment:
+            cmd += f" {comment}"
+        source.reply(f"{ai_prefix}正在创建新备份...")
+        server.execute(cmd)
+        return "已触发创建新备份（存至槽位1，已有槽位后移）。若无响应，说明服务端未安装 quick_backup_multi 插件。"
+    elif action == "back":
+        cmd = "!!qb back"
+        if slot:
+            cmd += f" {slot}"
+        source.reply(f"{ai_prefix}正在发起回档请求（需再用 confirm 确认才生效）...")
+        server.execute(cmd)
+        return "已发起回档请求。回档不会立即执行，需再调用 backup_manage(action='confirm') 确认后才真正回档。如需取消请用 action='abort'。"
     elif action == "confirm":
         server.execute("!!qb confirm")
-        return "已发送确认指令。"
+        return "已发送确认指令，回档将开始执行。"
+    elif action == "abort":
+        server.execute("!!qb abort")
+        return "已中断回档流程。"
     return f"未知操作: {action}"

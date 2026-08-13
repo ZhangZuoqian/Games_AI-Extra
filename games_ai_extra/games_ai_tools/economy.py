@@ -39,28 +39,29 @@ def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: s
 
 
 @register_tool(
-    description="查询玩家经济余额。需要服务端安装 EssentialsX（或兼容 Vault 的经济插件）。balance 是玩家专属命令，会向调用玩家发送可点击消息由其本人点击执行（控制台 execute 无法代玩家执行）。若未安装经济插件，服务端会返回未知命令提示。",
+    description="查询玩家经济余额。需要服务端安装 EssentialsX（或兼容 Vault 的经济插件）。不指定 player 时向调用玩家发送可点击消息由其本人点击执行 /balance（玩家专属）；指定 player 时直接执行 /balance <player>（控制台可执行，需 essentials.balance.others 权限）。若未安装经济插件，服务端会返回未知命令提示。",
     parameters={
         "type": "object",
         "properties": {
             "player": {
                 "type": "string",
-                "description": "可选。要查询的玩家名。不填则查询调用者自己（仅玩家可用）。"
+                "description": "可选。要查询的玩家名。不填则查询调用者自己（仅玩家可用，会发送可点击消息）。"
             }
         }
     }
 )
 def get_balance(source: CommandSource, ai_prefix: str, player: str = None):
+    server = source.get_server()
     if not player:
+        # 查自己余额：balance 无参是玩家专属命令，用可点击消息让玩家本人执行
         if not source.is_player:
-            return "控制台查询必须指定 player，且该玩家需自行点击执行 balance 命令"
+            return "控制台查询自己余额无意义（控制台无账户）。请指定 player 参数查询他人余额。"
         source.reply(f"{ai_prefix}正在准备查询你的余额...")
         return _send_clickable_cmd(source, "点击查询余额", "balance", "若提示未知命令，说明服务端未安装经济插件")
-    # 指定其他玩家：balance <player> 通常是管理员命令，控制台或可执行
-    server = source.get_server()
+    # 查他人余额：/balance <player> 控制台可执行（需 essentials.balance.others 权限）
     source.reply(f"{ai_prefix}正在查询 {player} 的余额...")
-    server.execute(f"balancetop")  # balancetop 可由控制台执行查看排行
-    return f"已发送余额查询指令。若需查询 {player} 个人余额，可让其本人执行 /balance。若提示未知命令，说明服务端未安装经济插件。"
+    server.execute(f"balance {player}")
+    return f"已发送查询 {player} 余额的指令，结果请查看聊天栏。若提示未知命令，说明服务端未安装经济插件；若提示无权限，需 essentials.balance.others 权限。"
 
 
 @register_tool(

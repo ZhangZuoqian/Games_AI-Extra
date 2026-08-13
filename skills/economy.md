@@ -28,14 +28,14 @@
 ## 1. 余额查询（`get_balance`）
 
 ```
-# 玩家查自己余额
+# 玩家查自己余额（发送可点击消息，玩家点击执行 /balance）
 get_balance()
 
-# 查询某玩家余额
+# 查询他人余额（直接执行 /balance <player>，控制台可执行）
 get_balance(player="Steve")
 ```
 
-> 依赖 Vault。结果在聊天栏返回。
+> 依赖 EssentialsX（或兼容 Vault 的经济插件）。查自己余额时 `/balance` 是玩家专属命令，本工具发送可点击消息由玩家本人点击执行；查他人余额用 `/balance <player>`（控制台可执行，需 `essentials.balance.others` 权限）。结果在聊天栏返回。
 
 ---
 
