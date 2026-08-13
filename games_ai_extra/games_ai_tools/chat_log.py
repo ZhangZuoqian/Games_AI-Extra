@@ -105,6 +105,5 @@ def clear_chat_log(source: CommandSource, ai_prefix: str, confirm: bool):
 
 # ── 监听玩家聊天事件（由 __init__ on_player_chat 按配置调用）────────
 
-def on_player_chat(server, player, message, **kwargs):
-    """MCDR 玩家聊天事件回调。高效：内存 append，O(1)。"""
-    _append_chat_record(player, message)
+# 注：MCDR 没有 on_player_chat 事件，聊天记录由 __init__.py 的 on_user_info
+# 直接调用上面的 _append_chat_record(player, message) 完成。

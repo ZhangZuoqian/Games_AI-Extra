@@ -66,7 +66,8 @@ The default configuration file (`config/games_ai_extra/config.json`) structure i
     "technical_server": false,
     "survival_server": false,
     "economy": false,
-    "chat_log": false
+    "chat_log": false,
+    "setup_done": false
 }
 ```
 
@@ -83,7 +84,23 @@ The default configuration file (`config/games_ai_extra/config.json`) structure i
 > `location_plguin` and `where2go_plugin` manage the same set of waypoint tools (`add_pos_pos`, `add_pos_here`, `remove_pos`, `search_pos`, `get_all_pos`). It is recommended to enable only **one** of them to avoid duplicate tool registrations. `where2go_plugin` is enabled by default.
 
 > [!IMPORTANT]
-> `technical_server`, `survival_server`, `economy`, and `chat_log` are **gated modules** — they are disabled by default and must be explicitly enabled in `config.json`. They use **in-memory storage only** (no file writes) and player-exclusive commands are sent as clickable `tellraw` messages (MCDR's `execute()` runs as console and cannot execute player-only commands).
+> `technical_server`, `survival_server`, `economy`, and `chat_log` are **gated modules** — they are disabled by default and will **not load** until an admin completes the first-run setup via `!!gai_setup`. They use **in-memory storage only** (no file writes) and player-exclusive commands are sent as clickable `tellraw` messages (MCDR's `execute()` runs as console and cannot execute player-only commands).
+
+- **setup_done**: Internal flag. `false` on first start — gated modules won't load and admins get a console/in-game prompt to run `!!gai_setup`. Set to `true` after setup completes. You can reset it to `false` to re-trigger the setup wizard.
+
+### First-Run Setup (`!!gai_setup`)
+
+On first start, the original modules (`carpet`, `where2go_plugin`, `bot_group`) load normally, but the gated modules stay unloaded. The console prints a banner listing them, and admins get an in-game message on join. An admin then configures which modules to enable:
+
+| Command | Description |
+|---------|-------------|
+| `!!gai_setup` | Show current module status and usage |
+| `!!gai_setup on <module...>` | Enable modules (space-separated, or `all`) |
+| `!!gai_setup off <module...>` | Disable modules (space-separated, or `all`) |
+| `!!gai_setup done` | Finish setup — enabled gated modules load immediately |
+| `!!gai_setup status` | Show current status |
+
+Available modules: `technical_server`, `survival_server`, `economy`, `chat_log` (or `all`).
 
 After modifying the configuration, use `!!gamesai reload` to apply the changes.
 
@@ -179,13 +196,15 @@ If a required dependency is not installed, the corresponding tools will return a
 
 ### Version 0.3.0
 
-- Added **gated modules** (all **disabled by default**, opt-in via `config.json`):
-  - `technical_server`: TPS/MSPT query (via carpet script, no spark), Carpet rules, forceload, locate, scoreboard, death log (in-memory). Requires `carpet` enabled.
-  - `survival_server`: teleport/home/warp/claim via **clickable `tellraw` messages** (player executes with own identity, fixes `execute()`-as-console issue), weather/time, broadcast, backup.
+- Added **first-run setup wizard** (`!!gai_setup`): gated modules don't load until an admin configures them. Console banner + admin in-game prompt on join.
+- Added **gated modules** (all **disabled by default**, opt-in via `!!gai_setup`):
+  - `technical_server`: TPS/MSPT query (via carpet Scarpet `last_tick_times()`, no spark), Carpet rules, forceload, locate, scoreboard, death log (in-memory). Requires `carpet` enabled.
+  - `survival_server`: teleport/home/warp/claim via **clickable `tellraw` messages** (player executes with own identity, fixes `execute()`-as-console issue), weather/time, broadcast, backup (with full back/confirm/abort flow).
   - `economy`: balance/pay via clickable messages, in-memory price list.
   - `chat_log`: in-memory chat log search (no file writes, cleared on restart).
 - All gated modules use **in-memory storage only** (no file writes).
-- Event listeners (`on_player_death`, `on_player_chat`) now respect config (no recording when module disabled).
+- Fixed command syntax bugs (verified against upstream docs): Scarpet `tps()`/`mspt()` don't exist (use `last_tick_times()`), `balancetop` ≠ personal balance, `homes` is player-only, `backup confirm` needs `back` first.
+- Event handling via `on_user_info` (MCDR has no `on_player_death`/`on_player_chat` events); listeners respect config (no recording when module disabled).
 - Removed problematic tools: `view_inventory` (privacy), `count_entities` (buggy logic), `region_snapshot` (external plugin dependency).
 
 ### Version 0.2.0
