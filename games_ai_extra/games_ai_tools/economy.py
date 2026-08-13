@@ -1,8 +1,9 @@
 """经济系统工具集 - 余额查询、转账、价格查询
 
 高效实现策略：
-- 优先使用 Vault API（Bukkit 端经济），通过 MCDR 的 api 接口
-- 不需要数据库，所有数据由 Vault 后端经济插件管理（EssentialsX Economy / iConomy 等）
+- 直接调用原版/EssentialsX 经济命令，由服务端处理权限和校验
+- 不依赖 MCDR 插件检测（Vault 是 Bukkit 插件，MCDR 的 get_plugin_metadata 查不到）
+- 价格表用本地 JSON 维护，独立于服务端经济系统
 """
 import json
 import os
@@ -31,14 +32,8 @@ def _save_price_list(data: dict):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def _has_vault(server) -> bool:
-    """检测服务端是否有 Vault 经济插件"""
-    return server.get_plugin_metadata("vault") is not None or \
-           server.get_plugin_metadata("Vault") is not None
-
-
 @register_tool(
-    description="查询玩家经济余额。需要服务端安装 Vault + 经济插件（如 EssentialsX Economy）。生电/生存服交易必备。",
+    description="查询玩家经济余额。需要服务端安装 EssentialsX（或兼容 Vault 的经济插件）。生电/生存服交易必备。注意：Vault 是 Bukkit 插件，本工具直接调用 balance 命令，由服务端处理；若未安装经济插件，服务端会返回未知命令提示。",
     parameters={
         "type": "object",
         "properties": {
@@ -51,20 +46,19 @@ def _has_vault(server) -> bool:
 )
 def get_balance(source: CommandSource, ai_prefix: str, player: str = None):
     server = source.get_server()
-    if not _has_vault(server):
-        return "未检测到 Vault 经济插件，无法查询余额"
     if not player:
         if not source.is_player:
             return "控制台查询必须指定 player"
         player = source.player
     source.reply(f"{ai_prefix}正在查询 {player} 的余额...")
-    # Vault 通过 essentials:balance 命令查询
+    # 直接调用 essentials 的 balance 命令，由服务端处理
+    # 若未安装经济插件，服务端会返回"未知命令"，AI 可据此判断
     server.execute(f"balance {player}")
-    return f"已发送查询 {player} 余额的指令，结果请查看聊天栏"
+    return f"已发送查询 {player} 余额的指令，结果请查看聊天栏。若提示未知命令，说明服务端未安装经济插件。"
 
 
 @register_tool(
-    description="玩家之间转账。需要服务端安装 Vault + 经济插件。调用者必须是在线玩家。",
+    description="玩家之间转账。需要服务端安装 EssentialsX（或兼容 Vault 的经济插件）。调用者必须是在线玩家。",
     parameters={
         "type": "object",
         "properties": {
@@ -82,15 +76,13 @@ def get_balance(source: CommandSource, ai_prefix: str, player: str = None):
 )
 def pay_player(source: CommandSource, ai_prefix: str, to_player: str, amount: float):
     server = source.get_server()
-    if not _has_vault(server):
-        return "未检测到 Vault 经济插件，无法转账"
     if not source.is_player:
         return "控制台无法发起转账，请由玩家发起"
     if amount <= 0:
         return f"转账金额必须 > 0，你输入的是 {amount}"
     source.reply(f"{ai_prefix}正在向 {to_player} 转账 {amount}...")
     server.execute(f"pay {to_player} {amount}")
-    return f"已发送转账指令：向 {to_player} 转账 {amount}。请关注聊天栏确认是否成功"
+    return f"已发送转账指令：向 {to_player} 转账 {amount}。请关注聊天栏确认是否成功。若提示未知命令，说明服务端未安装经济插件。"
 
 
 @register_tool(

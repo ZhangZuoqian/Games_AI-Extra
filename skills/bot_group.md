@@ -10,8 +10,8 @@
 
 ## 核心原则
 
-- **bot_ 前缀**：所有假人名自动加 `bot_` 前缀（同 carpet 模块规则）
-- **复用 carpet 工具**：批量操作内部调用 `spawn_bot`/`kill_bot`/`bot_action`
+- **命名规则遵循 `carpet.md`**：本模块不重复定义假人命名规则，所有假人名的 `bot_` 前缀规则以 `carpet.md` skill 为准
+- **复用 carpet 工具**：批量操作内部调用 `spawn_bot`/`kill_bot`/`bot_action`，行为与单个调用完全相同
 - **组配置可保存**：常用假人组保存为 JSON，后续一键启动
 
 ---
@@ -147,7 +147,7 @@ group_kill(names=["test1", "test2"])
 ## 注意事项
 
 - **假人数量有上限**：太多假人会严重拖慢服务器，建议单组 ≤ 10 个
-- **bot_ 前缀自动添加**：用户传 "attacker" 实际生成 "bot_attacker"
+- **命名规则遵循 `carpet.md`**：假人名的 `bot_` 前缀规则以 `carpet.md` skill 为准，本模块不自动添加
 - **批量操作有延迟**：spawn 多个假人会顺序执行，每个有微小延迟
 - **组配置持久化**：保存后服务器重启仍然有效，除非手动 `group_delete`
 - **与 carpet 模块兼容**：批量工具内部调用 carpet 单个工具，行为一致

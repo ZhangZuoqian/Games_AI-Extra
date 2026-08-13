@@ -4,6 +4,9 @@
 - 复用 carpet.py 已有的 spawn_bot/kill_bot/bot_action 等工具
 - 批量 spawn/kill/action 直接遍历调用，避免重复代码
 - group 配置可保存到 JSON 复用
+
+⚠️ 命名规则：本模块不自动加 bot_ 前缀，遵循 carpet.md skill 的约定
+   （由 AI 在调用前按 skill 规则给名字加 bot_ 前缀），保持与原版 carpet 工具一致。
 """
 import json
 import os
@@ -34,7 +37,7 @@ def _save_groups(data: dict):
 
 
 @register_tool(
-    description="批量生成多个假人。每个假人可指定不同坐标/维度。常用于农场分工：一个攻击一个捡物一个放方块。",
+    description="批量生成多个假人。每个假人可指定不同坐标/维度。常用于农场分工：一个攻击一个捡物一个放方块。⚠️ 假人名必须带 bot_ 前缀（遵循 carpet.md skill 命名规则）。",
     parameters={
         "type": "object",
         "properties": {
@@ -44,7 +47,7 @@ def _save_groups(data: dict):
                 "items": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "假人名（自动加 bot_ 前缀）"},
+                        "name": {"type": "string", "description": "假人名（必须以 bot_ 开头，遵循 carpet.md skill 规则）"},
                         "pos": {
                             "type": "array",
                             "items": {"type": "number"},
@@ -68,8 +71,6 @@ def group_spawn(source: CommandSource, ai_prefix: str, bots: list):
         if not name:
             results.append("跳过：缺少 name")
             continue
-        if not name.startswith("bot_"):
-            name = "bot_" + name
         pos = cfg.get("pos")
         dim = cfg.get("dim")
         player = cfg.get("player")
@@ -82,14 +83,14 @@ def group_spawn(source: CommandSource, ai_prefix: str, bots: list):
 
 
 @register_tool(
-    description="批量移除多个假人。",
+    description="批量移除多个假人。⚠️ 假人名必须带 bot_ 前缀（遵循 carpet.md skill 命名规则）。",
     parameters={
         "type": "object",
         "properties": {
             "names": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "要移除的假人名列表（自动加 bot_ 前缀）"
+                "description": "要移除的假人名列表（必须以 bot_ 开头）"
             }
         },
         "required": ["names"]
@@ -99,8 +100,6 @@ def group_kill(source: CommandSource, ai_prefix: str, names: list):
     source.reply(f"{ai_prefix}正在批量移除 {len(names)} 个假人...")
     results = []
     for n in names:
-        if not n.startswith("bot_"):
-            n = "bot_" + n
         try:
             r = kill_bot(source, ai_prefix, name=n)
             results.append(f"{n}: {r}")
@@ -110,14 +109,14 @@ def group_kill(source: CommandSource, ai_prefix: str, names: list):
 
 
 @register_tool(
-    description="让多个假人同时执行相同动作。例如一组假人同时 attack 或同时 mine。常用于多人农场协作。",
+    description="让多个假人同时执行相同动作。例如一组假人同时 attack 或同时 mine。常用于多人农场协作。⚠️ 假人名必须带 bot_ 前缀（遵循 carpet.md skill 命名规则）。",
     parameters={
         "type": "object",
         "properties": {
             "names": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "假人名列表（自动加 bot_ 前缀）"
+                "description": "假人名列表（必须以 bot_ 开头）"
             },
             "action": {
                 "type": "string",
@@ -136,8 +135,6 @@ def group_action(source: CommandSource, ai_prefix: str, names: list, action: str
     source.reply(f"{ai_prefix}正在让 {len(names)} 个假人执行 {action}...")
     results = []
     for n in names:
-        if not n.startswith("bot_"):
-            n = "bot_" + n
         try:
             r = bot_action(source, ai_prefix, name=n, action=action, interval=interval)
             results.append(f"{n}: {r}")
@@ -205,13 +202,7 @@ def group_run(source: CommandSource, ai_prefix: str, group_name: str, action: st
     spawn_result = group_spawn(source, ai_prefix, bots=bots)
     # 2. 批量执行动作
     if act:
-        names = []
-        for b in bots:
-            n = b.get("name", "")
-            if n and not n.startswith("bot_"):
-                n = "bot_" + n
-            if n:
-                names.append(n)
+        names = [b.get("name", "") for b in bots if b.get("name")]
         action_result = group_action(source, ai_prefix, names=names, action=act)
         return f"组 {group_name} 已启动:\n{spawn_result}\n\n{action_result}"
     return f"组 {group_name} 已 spawn（无默认动作）:\n{spawn_result}"

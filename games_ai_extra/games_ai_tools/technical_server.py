@@ -31,15 +31,13 @@ from games_ai.games_ai_tool import register_tool
 def get_server_tps(source: CommandSource, ai_prefix: str, detail: bool = False):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在查询服务器性能...")
-    # 优先使用 spark（更准确），失败回退到 carpet
-    if server.get_plugin_metadata("spark") is not None:
-        server.execute_command("spark health --from-tick --to-tick now")
-        return "已通过 spark 输出性能报告，请查看服务器日志/聊天栏的 spark 输出"
-    # 回退：carpet script
+    # spark 是 Bukkit/Fabric 模组，MCDR 的 get_plugin_metadata 不一定能查到
+    # 直接尝试 spark 命令；若服务端无 spark，会返回未知命令，AI 可回退到 carpet
+    # 这里默认用 carpet script（fabric-carpet 是本插件的依赖，一定存在）
     server.execute("script run print('TPS=' + str(tps()) + ' MSPT=' + str(mspt()))")
     if detail:
         server.execute("script run print('TPS_5s=' + str(tps(5*20)) + ' TPS_10s=' + str(tps(10*20)) + ' TPS_1m=' + str(tps(20*60)))")
-    return "已发送性能查询指令，结果请查看服务器控制台或聊天栏返回。carpet script 模式下 TPS=20 表示满速，<20 表示卡顿；MSPT>50 表示服务器超载。"
+    return "已通过 carpet script 查询性能，结果请查看服务器控制台或聊天栏。TPS=20 表示满速，<20 表示卡顿；MSPT>50 表示服务器超载。如需更详细的 spark 报告，可让玩家手动执行 /spark health。"
 
 
 @register_tool(
@@ -433,7 +431,7 @@ def on_player_death(server, player, message):
 # ── 历史结构截图查询 ──────────────────────────────────────
 
 @register_tool(
-    description="查询或恢复某区域的历史结构截图（区块快照）。需要 MCDR 安装 region_snapshot 类插件。生电服排查回档/熊孩子破坏用。",
+    description="查询或恢复某区域的历史结构截图（区块快照）。需要 MCDR 安装 region_snapshot 类插件。生电服排查回档/熊孩子破坏用。注意：本工具直接执行 !!snapshot 命令，由服务端处理；若未安装 region_snapshot 插件，命令将被忽略或返回未知命令提示。",
     parameters={
         "type": "object",
         "properties": {
@@ -457,25 +455,18 @@ def on_player_death(server, player, message):
 )
 def region_snapshot(source: CommandSource, ai_prefix: str, action: str, pos: list = None, snapshot_id: str = None):
     server = source.get_server()
-    # 兼容常见 region snapshot 插件名
-    snapshot_plugins = ["region_snapshot", "region_snapshot_plugin", "primetiem"]
-    detected = None
-    for p in snapshot_plugins:
-        if server.get_plugin_metadata(p) is not None:
-            detected = p
-            break
-    if detected is None:
-        return "未检测到 region_snapshot 类插件，无法操作历史结构截图"
+    # 直接执行命令，不依赖插件检测（region_snapshot 是 MCDR 插件，但不同 fork 命名可能不同）
+    # 若未安装，!!snapshot 命令会被 MCDR 忽略或返回未知命令
     if action == "list":
         source.reply(f"{ai_prefix}正在列出所有区域快照...")
         server.execute("!!snapshot list")
-        return "已请求快照列表，结果请查看聊天栏"
+        return "已请求快照列表，结果请查看聊天栏。若无响应，说明服务端未安装 region_snapshot 类插件。"
     elif action == "query":
         if not pos:
             return "query 操作必须指定 pos [x, z]"
         source.reply(f"{ai_prefix}正在查询坐标 {pos} 的快照...")
         server.execute(f"!!snapshot query {pos[0]} {pos[1]}")
-        return f"已查询坐标 {pos} 的快照，结果请查看聊天栏"
+        return f"已查询坐标 {pos} 的快照，结果请查看聊天栏。若无响应，说明服务端未安装 region_snapshot 类插件。"
     elif action == "restore":
         if not snapshot_id:
             return "restore 操作必须指定 snapshot_id"

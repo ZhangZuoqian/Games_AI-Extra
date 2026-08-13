@@ -180,41 +180,34 @@ def view_inventory(source: CommandSource, ai_prefix: str, player: str, slot_type
 # ── 领地查询 ──────────────────────────────────────────────
 
 @register_tool(
-    description="查询某坐标或玩家当前位置属于谁的领地，以及权限信息。需要服务器安装领地插件（GriefDefender / Residence / Lands 等）。",
+    description="查询当前位置的领地信息。领地插件（GriefDefender/Residence/Lands）是 Bukkit 插件，本工具直接尝试常见查询命令，由服务端处理；若未安装领地插件，服务端会返回未知命令提示。建议按服务器实际安装的领地插件选用对应命令。",
     parameters={
         "type": "object",
         "properties": {
-            "pos": {
-                "type": "array",
-                "items": {"type": "number"},
-                "description": "可选。要查询的坐标 [x, y, z]。不填则用调用者当前位置。"
+            "plugin": {
+                "type": "string",
+                "enum": ["griefdefender", "residence", "lands"],
+                "description": "可选。领地插件类型。不填则默认尝试 griefdefender。"
             }
         }
     }
 )
-def query_claim(source: CommandSource, ai_prefix: str, pos: list = None):
+def query_claim(source: CommandSource, ai_prefix: str, plugin: str = "griefdefender"):
     server = source.get_server()
-    # 优先尝试常见领地插件命令
-    if source.is_player and not pos:
-        # GriefDefender
-        if server.get_plugin_metadata("griefdefender") is not None:
-            source.reply(f"{ai_prefix}正在查询当前位置的领地...")
-            server.execute("gd claim info")
-            return "已通过 GriefDefender 查询当前位置领地信息，结果请查看聊天栏"
-        # Residence
-        if server.get_plugin_metadata("residence") is not None:
-            server.execute("res info")
-            return "已通过 Residence 查询当前位置领地信息，结果请查看聊天栏"
-        # Lands
-        if server.get_plugin_metadata("lands") is not None:
-            server.execute("lands info")
-            return "已通过 Lands 查询当前位置领地信息，结果请查看聊天栏"
-        return "未检测到领地插件（GriefDefender/Residence/Lands），无法查询"
-    elif pos:
-        # 远程查询 - 需要领地插件支持远程查询
-        return f"远程坐标领地查询需要领地插件支持，当前坐标 {pos}。建议让该位置附近的玩家在原地发起查询。"
-    else:
-        return "控制台无法查询领地，需要指定 pos 或由玩家发起"
+    if not source.is_player:
+        return "控制台无法查询领地，需要由玩家在目标位置发起查询"
+    cmd_map = {
+        "griefdefender": "gd claim info",
+        "residence": "res info",
+        "lands": "lands info",
+    }
+    cmd = cmd_map.get(plugin)
+    if not cmd:
+        return f"未知领地插件类型: {plugin}，支持: griefdefender/residence/lands"
+    source.reply(f"{ai_prefix}正在通过 {plugin} 查询当前位置领地信息...")
+    # 直接执行命令，由服务端处理；若未安装对应插件，服务端会返回未知命令
+    server.execute(cmd)
+    return f"已发送查询指令: /{cmd}。若提示未知命令，说明服务端未安装 {plugin} 领地插件。"
 
 
 # ── 天气时间控制 ──────────────────────────────────────────
@@ -326,15 +319,15 @@ def broadcast(source: CommandSource, ai_prefix: str, message: str):
 )
 def backup_manage(source: CommandSource, ai_prefix: str, action: str, slot: str = None):
     server = source.get_server()
-    if server.get_plugin_metadata("quick_backup_multi") is None:
-        return "未检测到 quick_backup_multi 插件"
+    # quick_backup_multi 是 MCDR 插件，可以用 get_plugin_metadata 检测
+    # 但为稳健起见，直接执行命令，由 MCDR 处理；若未安装，!!qb 命令会被忽略
     if action == "list":
         server.execute("!!qb list")
-        return "已请求备份列表，结果请查看聊天栏"
+        return "已请求备份列表，结果请查看聊天栏。若无响应，说明服务端未安装 quick_backup_multi 插件。"
     elif action == "make":
         server.execute("!!qb make")
-        return "已触发创建新备份"
+        return "已触发创建新备份。若无响应，说明服务端未安装 quick_backup_multi 插件。"
     elif action == "confirm":
         server.execute("!!qb confirm")
-        return "已发送确认指令"
+        return "已发送确认指令。"
     return f"未知操作: {action}"
