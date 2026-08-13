@@ -8,10 +8,10 @@
 
 ## 核心原则
 
-- **玩家专属命令用可点击消息**：tpa/home/warp/领地查询等是玩家专属命令，MCDR 控制台无法代执行；本工具改为向玩家发送**可点击消息**，玩家点击后以本人身份执行
-- **依赖检测**：多数工具依赖 EssentialsX / 领地插件，使用前先确认插件存在
-- **权限谨慎**：天气/时间/备份等管理员命令，调用前告知用户
-- **默认关闭**：需在 `config.json` 开启 `survival_server` 才会注册工具
+- tpa/home/warp/领地查询这些是玩家专属命令，MCDR 控制台代执行没用，所以改成发可点击消息让玩家自己点
+- 多数工具靠 EssentialsX / 领地插件，不检测装没装，直接发命令，没装会提示未知命令
+- 天气/时间/备份是管理员命令，调用前先跟用户说一声
+- 默认关闭，要在 `config.json` 里开 `survival_server` 才注册
 
 ---
 
@@ -23,7 +23,7 @@
 | `home_manage` | 管理个人家 | `action`, `name?` |
 | `warp_manage` | 公共传送点 | `action`, `name?` |
 | `get_player_info` | 查询玩家信息 | `player?` |
-| `query_claim` | 查询领地归属 | `pos?` |
+| `query_claim` | 查询领地归属 | `plugin?` |
 | `set_weather` | 设置天气 | `weather`, `duration?` |
 | `set_time` | 设置时间 | `time`, `mode?` |
 | `broadcast` | 全服公告 | `message` |
@@ -67,14 +67,16 @@ get_player_info(player="Steve")
 ## 3. 领地查询（`query_claim`）
 
 ```
-# 玩家原地查询
+# 玩家原地查询（默认 GriefDefender）
 query_claim()
 
-# 指定坐标查询（需领地插件支持远程查询）
-query_claim(pos=[100, 64, -50])
+# 指定领地插件类型查询
+query_claim(plugin="griefdefender")   # GriefDefender（默认）
+query_claim(plugin="residence")       # Residence
+query_claim(plugin="lands")           # Lands
 ```
 
-> 自动检测 GriefDefender / Residence / Lands 插件。
+> 领地插件是 Bukkit 的，命令只能玩家执行，所以发可点击消息让玩家自己点。`plugin` 选哪个插件，默认 griefdefender，没装就提示未知命令。
 
 ---
 
@@ -148,4 +150,4 @@ backup_manage(action="abort")                         # 中断回档
 - 传送/home/tpa 类命令**必须玩家本人发起**，AI 会发送可点击消息让玩家点击执行
 - 领地查询结果在聊天栏或控制台，AI 需读取后解读
 - 天气/时间/备份是管理员操作，**先告知用户再执行**
-- 依赖插件缺失时工具会返回明确错误，AI 应解释并建议安装
+- 插件没装的话服务端会提示未知命令，跟用户说一声让装上

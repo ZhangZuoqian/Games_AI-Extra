@@ -147,7 +147,7 @@ query_death_log()
 query_death_log(player="Steve", limit=3)
 ```
 
-死亡记录由插件自动监听 `player_death` 事件记录到**内存**（不写入文件，重启清空）。
+死亡记录靠 `on_user_info` 抓服务端广播的死亡消息，存内存里，重启就没了。
 
 ---
 
@@ -238,4 +238,4 @@ scoreboard_manage(action="remove", name="oldCount")
 - 大部分命令需要**管理员权限**（OP 或 carpet 权限）
 - `carpet_rule_set` / `set_tickrate` / `forceload` / `clear_entities` 都是修改性操作，**先告知用户再执行**
 - 性能查询结果通过聊天栏/控制台返回，AI 需要读取后向用户解读
-- 死亡日志文件最多保留 500 条，超出自动滚动
+- 死亡日志只在内存里存，最多 500 条，超了自动滚掉旧的，不写文件
