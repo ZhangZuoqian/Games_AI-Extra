@@ -18,6 +18,7 @@ def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: s
 
     解决 MCDR execute() 以控制台身份执行玩家专属命令（如 tpa/home/warp）无效的问题。
     返回给 AI 的说明文本。
+    command 会经过 JSON 转义，防止玩家名/参数里的引号破坏 tellraw JSON。
     """
     server = source.get_server()
     if not source.is_player:
@@ -27,12 +28,14 @@ def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: s
             + (f"\n说明：{hint}" if hint else "")
         )
     player = source.player
+    # command 放进 clickEvent.value 时需转义引号/反斜杠，避免破坏 tellraw JSON
+    safe_command = command.replace("\\", "\\\\").replace('"', '\\"')
     # tellraw clickEvent run_command：玩家点击后以本人身份执行该命令
     msg = {
         "text": f"[{label}] ",
         "color": "aqua",
-        "clickEvent": {"action": "run_command", "value": f"/{command}"},
-        "hoverEvent": {"action": "show_text", "value": f"点击执行 /{command}"},
+        "clickEvent": {"action": "run_command", "value": f"/{safe_command}"},
+        "hoverEvent": {"action": "show_text", "value": f"点击执行 /{safe_command}"},
     }
     server.execute(f"tellraw {player} {_json.dumps(msg, ensure_ascii=False)}")
     return (
@@ -302,19 +305,28 @@ def broadcast(source: CommandSource, ai_prefix: str, message: str):
 )
 def backup_manage(source: CommandSource, ai_prefix: str, action: str, slot: int = None, comment: str = None):
     server = source.get_server()
+    # action 白名单校验
+    valid_actions = {"list", "make", "back", "confirm", "abort"}
+    if action not in valid_actions:
+        return f"未知操作: {action!r}，可选：{', '.join(sorted(valid_actions))}"
     if action == "list":
         server.execute("!!qb list")
         return "已请求备份列表，结果请查看聊天栏。若无响应，说明服务端未安装 quick_backup_multi 插件。"
     elif action == "make":
         cmd = "!!qb make"
         if comment:
-            cmd += f" {comment}"
+            # comment 限制长度 + 转义分号/换行（防止注入额外指令）
+            safe_comment = comment.replace(";", "").replace("\n", " ").replace("\r", "")[:64]
+            cmd += f" {safe_comment}"
         source.reply(f"{ai_prefix}正在创建新备份...")
         server.execute(cmd)
         return "已触发创建新备份（存至槽位1，已有槽位后移）。若无响应，说明服务端未安装 quick_backup_multi 插件。"
     elif action == "back":
         cmd = "!!qb back"
-        if slot:
+        if slot is not None:
+            # slot 必须是 1-10 的整数
+            if not isinstance(slot, int) or slot < 1 or slot > 10:
+                return f"slot 非法：{slot}，应为 1-10 的整数"
             cmd += f" {slot}"
         source.reply(f"{ai_prefix}正在发起回档请求（需再用 confirm 确认才生效）...")
         server.execute(cmd)

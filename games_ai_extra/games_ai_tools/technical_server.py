@@ -30,18 +30,23 @@ from games_ai.games_ai_tool import register_tool
 def get_server_tps(source: CommandSource, ai_prefix: str, detail: bool = False):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在查询服务器性能...")
-    # Scarpet 没有内置 tps()/mspt()，用 last_tick_times()（最近 100 tick 耗时 ms 列表）自行计算
-    # MSPT = 平均每 tick 耗时；TPS = min(20, 1000/MSPT)
-    server.execute(
-        "script run mspt()->(s=0;for(last_tick_times(),s+=_);s/100);"
-        "print('MSPT='+mspt()+' TPS='+min(20,1000/mspt()))"
+    # Scarpet 脚本：先定义 mspt() 函数（用 last_tick_times() 算平均），
+    # 再计算 TPS，最后 print 输出。函数定义放前面，避免调用时未定义。
+    # MSPT = 最近 100 tick 平均耗时；TPS = min(20, 1000/MSPT)
+    script = (
+        "mspt() -> (s=0; for(last_tick_times(), s+=_); s/100); "
+        "m = mspt(); "
+        "t = min(20, 1000/m); "
+        "print('MSPT='+m+' TPS='+t)"
     )
+    server.execute(f"script run {script}")
     if detail:
-        # 显示最近 100 tick 的最小/最大/平均耗时，定位偶发卡顿
-        server.execute(
-            "script run print('min='+min(last_tick_times())+' max='+max(last_tick_times())"
-            "+' avg='+(s=0;for(last_tick_times(),s+=_);s/100))"
+        # min/max/avg 定位偶发卡顿
+        detail_script = (
+            "v = last_tick_times(); "
+            "print('min='+min(v)+' max='+max(v)+' avg='+(s=0; for(v, s+=_); s/100))"
         )
+        server.execute(f"script run {detail_script}")
     return "已通过 carpet script 查询性能，结果请查看服务器控制台或聊天栏。TPS=20 表示满速，<20 表示卡顿；MSPT>50 表示服务器超载。"
 
 
@@ -126,6 +131,19 @@ def carpet_rule_get(source: CommandSource, ai_prefix: str, rule: str = None):
 )
 def carpet_rule_set(source: CommandSource, ai_prefix: str, rule: str, value: str):
     server = source.get_server()
+    # 白名单校验：rule 只允许字母/数字/下划线；value 限定常见类型
+    if not rule or not rule.replace("_", "").isalnum():
+        return f"规则名非法：{rule!r}。只能用字母、数字、下划线"
+    # value 允许：true/false/数字/常见枚举值
+    allowed_values = {"true", "false", "default", "optimized", "precise"}
+    is_number = False
+    try:
+        float(value)
+        is_number = True
+    except (ValueError, TypeError):
+        pass
+    if value.lower() not in allowed_values and not is_number:
+        return f"value 非法：{value!r}。只允许 true/false/数字 或常见枚举（default/optimized/precise）"
     source.reply(f"{ai_prefix}正在修改 carpet 规则 {rule} = {value}...")
     server.execute(f"carpet {rule} {value}")
     return f"已发送修改指令：carpet {rule} {value}。如失败请检查权限或规则名拼写"

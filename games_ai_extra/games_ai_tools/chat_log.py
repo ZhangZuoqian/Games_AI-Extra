@@ -60,26 +60,35 @@ def search_chat_log(source: CommandSource, ai_prefix: str, player: str = None, k
     if not _CHAT_RECORDS:
         return "暂无聊天记录（本插件启动后尚未记录任何消息，或 chat_log 未启用）"
 
-    records = list(_CHAT_RECORDS)
-    filtered = records
-    if player:
-        filtered = [r for r in filtered if r.get("player") == player]
-    if keyword:
-        kw_lower = keyword.lower()
-        filtered = [r for r in filtered if kw_lower in r.get("message", "").lower()]
-    if since:
-        filtered = [r for r in filtered if r.get("time", "") >= since]
-    if until:
-        filtered = [r for r in filtered if r.get("time", "") <= until]
+    # 校验 limit
+    if not isinstance(limit, int) or limit <= 0:
+        return f"limit 非法：{limit}，必须 > 0"
+    if limit > 200:
+        limit = 200  # 上限保护，避免一次返回太多
+
+    total = len(_CHAT_RECORDS)
+    # 直接遍历 deque 过滤，不做 list() 全量拷贝
+    kw_lower = keyword.lower() if keyword else None
+    filtered = []
+    for r in _CHAT_RECORDS:
+        if player and r.get("player") != player:
+            continue
+        if kw_lower and kw_lower not in r.get("message", "").lower():
+            continue
+        if since and r.get("time", "") < since:
+            continue
+        if until and r.get("time", "") > until:
+            continue
+        filtered.append(r)
 
     if not filtered:
-        return f"未找到匹配的聊天记录（共扫描 {len(records)} 条）"
+        return f"未找到匹配的聊天记录（共扫描 {total} 条）"
 
-    result = filtered[-limit:][::-1]
-    lines = []
-    for r in result:
-        lines.append(f"[{r.get('time', '?')}] {r.get('player', '?')}: {r.get('message', '')}")
-    header = f"找到 {len(filtered)} 条匹配记录（共扫描 {len(records)} 条），显示最近 {len(result)} 条："
+    # 取最近 limit 条（filtered 按时间正序，末尾是最新）
+    result = filtered[-limit:]
+    result.reverse()  # 最新在前
+    lines = [f"[{r.get('time', '?')}] {r.get('player', '?')}: {r.get('message', '')}" for r in result]
+    header = f"找到 {len(filtered)} 条匹配记录（共扫描 {total} 条），显示最近 {len(result)} 条："
     return header + "\n" + "\n".join(lines)
 
 

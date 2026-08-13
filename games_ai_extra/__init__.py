@@ -353,17 +353,25 @@ _DEATH_PATTERN = _re.compile(r"^\S.{0,32}\s+(?:[\w]+\s+){1,6}(?:" + "|".join(
 
 
 def _try_record_death(server, content: str):
-    """尝试从服务端消息中解析死亡事件并记录到死亡日志。"""
+    """尝试从服务端消息中解析死亡事件并记录到死亡日志。
+
+    死亡广播格式：<玩家名> <死亡描述>，可能带 § 颜色码。
+    先剥离颜色码再解析，避免取到 §e 之类的前缀。
+    """
     try:
         from games_ai_extra.games_ai_tools.technical_server import on_player_death as _record
+        # 剥离 Minecraft 颜色码：§ 后跟一个字符（§e、§r 等）
+        clean = _re.sub(r"§.", "", content).strip()
+        if not clean:
+            return
         # 简单启发式：消息含死亡关键词时认为是死亡广播
-        content_lower = content.lower()
+        content_lower = clean.lower()
         if not any(k in content_lower for k in _DEATH_KEYWORDS):
             return
         # 取消息第一个词作为玩家名（死亡广播格式通常以玩家名开头）
-        parts = content.split(maxsplit=1)
+        parts = clean.split(maxsplit=1)
         player = parts[0] if parts else "unknown"
-        _record(server, player, content)
+        _record(server, player, clean)
     except Exception as e:
         try:
             server.logger.warning(f"[games_ai_extra] 死亡记录失败: {e}")

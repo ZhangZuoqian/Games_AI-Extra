@@ -1,39 +1,31 @@
 """假人批量脚本工具集 - 一次操作多个 Carpet 假人
 
-高效实现策略：
-- 复用 carpet.py 已有的 spawn_bot/kill_bot/bot_action 等工具
-- 批量 spawn/kill/action 直接遍历调用，避免重复代码
-- group 配置可保存到 JSON 复用
+实现说明：
+- 复用 carpet.py 已有的 spawn_bot/kill_bot/bot_action
+- group 配置存内存（不写文件，重启清空，符合 reviewer 要求）
+- 批量操作累计结果一次返回，不逐条刷屏
 
 ⚠️ 命名规则：本模块不自动加 bot_ 前缀，遵循 carpet.md skill 的约定
    （由 AI 在调用前按 skill 规则给名字加 bot_ 前缀），保持与原版 carpet 工具一致。
 """
-import json
-import os
-
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool
 
 from games_ai_extra.games_ai_tools.carpet import spawn_bot, kill_bot, bot_action, bot_hotbar, bot_look
 
 
-_GROUP_DB_FILE = os.path.join("config", "games_ai_extra", "bot_groups.json")
+# 内存存储：进程重启后清空（符合"无文件写入"要求）
+_GROUP_DB: dict = {}
 
 
 def _load_groups() -> dict:
-    if not os.path.isfile(_GROUP_DB_FILE):
-        return {}
-    try:
-        with open(_GROUP_DB_FILE, mode="r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    return _GROUP_DB
 
 
 def _save_groups(data: dict):
-    os.makedirs(os.path.dirname(_GROUP_DB_FILE), exist_ok=True)
-    with open(_GROUP_DB_FILE, mode="w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    # 内存存储，直接替换引用
+    _GROUP_DB.clear()
+    _GROUP_DB.update(data)
 
 
 @register_tool(
@@ -75,6 +67,7 @@ def group_spawn(source: CommandSource, ai_prefix: str, bots: list):
         dim = cfg.get("dim")
         player = cfg.get("player")
         try:
+            # 不在循环内 reply，避免刷屏；spawn_bot 内部 reply 已被 ai_prefix 抑制
             r = spawn_bot(source, ai_prefix, name=name, pos=pos, player=player, dim=dim)
             results.append(f"{name}: {r}")
         except Exception as e:

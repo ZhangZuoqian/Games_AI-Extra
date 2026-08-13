@@ -82,13 +82,42 @@ def get_balance(source: CommandSource, ai_prefix: str, player: str = None):
     }
 )
 def pay_player(source: CommandSource, ai_prefix: str, to_player: str, amount: float):
+    # amount 强制转 float 并校验，防止 "1;kill @a" 之类注入
+    try:
+        amount = float(amount)
+    except (ValueError, TypeError):
+        return f"转账金额非法：{amount!r}，必须是数字"
     if amount <= 0:
         return f"转账金额必须 > 0，你输入的是 {amount}"
-    source.reply(f"{ai_prefix}正在准备向 {to_player} 转账 {amount}...")
+    if amount > 1e9:
+        return f"转账金额过大：{amount}，单笔上限 1,000,000,000"
+    # to_player 限制为合法玩家名（字母/数字/下划线）
+    if not isinstance(to_player, str) or not to_player.replace("_", "").isalnum() or not to_player:
+        return f"收款玩家名非法：{to_player!r}。只能用字母、数字、下划线"
+    # 格式化金额：去掉多余的 0（1.0 → 1，1.50 → 1.5）
+    amount_str = f"{amount:g}"
+    source.reply(f"{ai_prefix}正在准备向 {to_player} 转账 {amount_str}...")
     return _send_clickable_cmd(
-        source, "点击转账", f"pay {to_player} {amount}",
+        source, "点击转账", f"pay {to_player} {amount_str}",
         "点击后将以本人身份发起转账，请关注聊天栏确认是否成功。若提示未知命令，说明服务端未安装经济插件。"
     )
+
+
+def _normalize_item(item: str) -> str | None:
+    """校验并归一化物品 ID：只允许字母/数字/下划线/冒号，自动补 minecraft: 前缀。
+
+    返回归一化后的 ID；非法时返回 None。
+    """
+    if not isinstance(item, str) or not item:
+        return None
+    item = item.strip().lower()
+    # 只允许 a-z 0-9 _ : .，禁止空格/分号/引号等
+    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789_:.")
+    if not all(c in allowed for c in item):
+        return None
+    if ":" not in item:
+        item = "minecraft:" + item
+    return item
 
 
 @register_tool(
@@ -114,9 +143,15 @@ def pay_player(source: CommandSource, ai_prefix: str, to_player: str, amount: fl
     }
 )
 def price_list(source: CommandSource, ai_prefix: str, action: str, item: str = None, price: float = None):
+    valid_actions = {"query", "set", "list", "remove"}
+    if action not in valid_actions:
+        return f"未知操作: {action!r}，可选：{', '.join(sorted(valid_actions))}"
     if action == "query":
         if not item:
             return "query 操作必须指定 item"
+        # query 允许模糊匹配，但仍要校验非法字符
+        if not isinstance(item, str) or any(c in item for c in " \t\n;\"'\\"):
+            return f"item 含非法字符：{item!r}"
         item_lower = item.lower()
         for k, v in _PRICE_LIST.items():
             if item_lower in k.lower():
@@ -130,19 +165,25 @@ def price_list(source: CommandSource, ai_prefix: str, action: str, item: str = N
     elif action == "set":
         if not item or price is None:
             return "set 操作必须指定 item 和 price"
+        try:
+            price = float(price)
+        except (ValueError, TypeError):
+            return f"价格非法：{price!r}，必须是数字"
         if price < 0:
             return "价格不能为负"
-        if ":" not in item:
-            item = "minecraft:" + item
-        _PRICE_LIST[item] = price
-        return f"已设置 {item} 的价格为 {price}"
+        normalized = _normalize_item(item)
+        if normalized is None:
+            return f"item 非法：{item!r}。只允许字母、数字、下划线、冒号、点"
+        _PRICE_LIST[normalized] = price
+        return f"已设置 {normalized} 的价格为 {price}"
     elif action == "remove":
         if not item:
             return "remove 操作必须指定 item"
-        if ":" not in item:
-            item = "minecraft:" + item
-        if item in _PRICE_LIST:
-            del _PRICE_LIST[item]
-            return f"已删除 {item} 的价格记录"
-        return f"价格表中没有 {item}"
+        normalized = _normalize_item(item)
+        if normalized is None:
+            return f"item 非法：{item!r}。只允许字母、数字、下划线、冒号、点"
+        if normalized in _PRICE_LIST:
+            del _PRICE_LIST[normalized]
+            return f"已删除 {normalized} 的价格记录"
+        return f"价格表中没有 {normalized}"
     return f"未知操作: {action}"

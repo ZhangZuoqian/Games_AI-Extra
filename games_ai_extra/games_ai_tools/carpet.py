@@ -1,7 +1,19 @@
-import time
+from threading import Timer
 
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool, register_bot_tool
+
+
+def _is_valid_name(name: str) -> bool:
+    """假人名只能字母/数字/下划线，防注入。"""
+    return isinstance(name, str) and name.replace("_", "").isalnum() and len(name) > 0
+
+
+def _is_valid_pos(pos) -> bool:
+    """坐标必须是长度 3 的数字列表。"""
+    return isinstance(pos, (list, tuple)) and len(pos) == 3 and all(
+        isinstance(x, (int, float)) for x in pos
+    )
 
 @register_tool(description="在服务器中生成一个假人。可以指定坐标(pos)在特定位置生成，或指定玩家名(player)在某个玩家身边生成。pos 和 player 互斥，只能二选一。两个都不填则在世界出生点生成。可选指定维度(dim)在特定维度（如 minecraft:the_nether）生成：若同时指定 pos 则在维度指定坐标生成，若不指定 pos 则在维度 ~ ~ ~ 位置生成。创建假人后需通过其他工具控制其行为。", parameters={
     "type": "object",
@@ -31,6 +43,13 @@ from games_ai.games_ai_tool import register_tool, register_bot_tool
 @register_bot_tool()
 def spawn_bot(source: CommandSource, ai_prefix: str, name: str, pos: list | None = None, player: str | None = None, dim: str | None = None):
     server = source.get_server()
+    # 输入校验：防注入
+    if not _is_valid_name(name):
+        return f"假人名非法：{name!r}。只能用字母、数字、下划线"
+    if pos is not None and not _is_valid_pos(pos):
+        return f"坐标格式错误：{pos}。应为 [x, y, z] 三个数字"
+    if player is not None and not _is_valid_name(player):
+        return f"玩家名非法：{player!r}"
     if source.is_player:
         exe_player = source.player
         cmd_prefix = f"execute as {exe_player} run "
@@ -152,13 +171,25 @@ def bot_move(source: CommandSource, ai_prefix: str, name: str, direction: str):
 })
 def bot_look(source: CommandSource, ai_prefix: str, name: str, target: str):
     server = source.get_server()
+    if not _is_valid_name(name):
+        return f"假人名非法：{name!r}"
+    if not isinstance(target, str) or not target.strip():
+        return "target 不能为空"
     source.reply(f"{ai_prefix}正在让假人 {name} 看向 {target} ...")
     direction_words = {"north", "south", "east", "west", "up", "down"}
     target_lower = target.strip().lower()
-    if target_lower in direction_words or target_lower.startswith("at "):
+    # 三段数字 → look at x y z
+    parts = target.strip().split()
+    if len(parts) == 3:
+        try:
+            float(parts[0]); float(parts[1]); float(parts[2])
+            cmd = f"player {name} look at {target}"
+        except ValueError:
+            cmd = f"player {name} look {target}"
+    elif target_lower in direction_words:
+        cmd = f"player {name} look {target_lower}"
+    elif target_lower.startswith("at "):
         cmd = f"player {name} look {target}"
-    elif len(target.split()) == 3:
-        cmd = f"player {name} look at {target}"
     else:
         cmd = f"player {name} look {target}"
     server.execute(cmd)
@@ -211,6 +242,12 @@ def bot_hotbar(source: CommandSource, ai_prefix: str, name: str, slot: int):
 })
 def bot_timed_action(source: CommandSource, ai_prefix: str, name: str, action: str, duration: float):
     server = source.get_server()
+    if not _is_valid_name(name):
+        return f"假人名非法：{name!r}"
+    if not isinstance(duration, (int, float)) or duration <= 0:
+        return f"duration 必须 > 0，当前 {duration}"
+    if duration > 300:
+        return f"duration 过大（{duration}s），限时动作上限 300 秒，避免遗忘"
 
     move_actions = {
         "forward": "move forward",
@@ -224,11 +261,12 @@ def bot_timed_action(source: CommandSource, ai_prefix: str, name: str, action: s
     else:
         cmd = f"player {name} {action}"
 
-    source.reply(f"{ai_prefix}假人 {name} 开始 {action}，将持续 {duration} 秒...")
+    source.reply(f"{ai_prefix}假人 {name} 开始 {action}，将持续 {duration} 秒后自动停止...")
     server.execute(cmd)
-    time.sleep(duration)
-    server.execute(f"player {name} stop")
-    return f"假人 {name} 已完成 {duration} 秒的 {action}，已自动停止"
+    # 用 Timer 异步延时，不阻塞 MCDR 主线程（time.sleep 会卡死整个插件）
+    stop_cmd = f"player {name} stop"
+    Timer(float(duration), lambda: server.execute(stop_cmd)).start()
+    return f"假人 {name} 已开始 {action}，{duration} 秒后自动停止（异步，不阻塞其他操作）"
 
 # ── 自定义指令 ────────────────────────────────────────────
 
