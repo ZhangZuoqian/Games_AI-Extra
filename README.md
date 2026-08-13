@@ -33,6 +33,7 @@ English  |  [简体中文](/README.zh-CN.md)  |  [繁體中文](/README.zh-TW.md
     - [Skills](#skills)
   - [Dependencies](#dependencies)
   - [What's New](#whats-new)
+    - [Version 0.3.0](#version-030)
     - [Version 0.2.0](#version-020)
     - [Version 0.1.2](#version-012)
     - [Version 0.1.1](#version-011)
@@ -61,7 +62,11 @@ The default configuration file (`config/games_ai_extra/config.json`) structure i
     "carpet": true,
     "location_plguin": false,
     "where2go_plugin": true,
-    "bot_group": true
+    "bot_group": true,
+    "technical_server": false,
+    "survival_server": false,
+    "economy": false,
+    "chat_log": false
 }
 ```
 
@@ -69,9 +74,16 @@ The default configuration file (`config/games_ai_extra/config.json`) structure i
 - **location_plguin**: Set to `true` to enable waypoint management via the [Location Marker](https://mcdreforged.com/plugin/location_marker) MCDR plugin. Set to `false` to disable.
 - **where2go_plugin**: Set to `true` to enable waypoint management via the [Where2Go](https://mcdreforged.com/plugin/where2go) MCDR plugin. Set to `false` to disable.
 - **bot_group**: Set to `true` to enable batch fake player operations (group spawn/kill/action, saved group configs). Requires `carpet` to be enabled. Set to `false` to disable.
+- **technical_server**: Set to `true` to enable technical server tools (TPS/MSPT, Carpet rules, forceload, scoreboard, etc.). **Default off.** Requires `carpet` to be enabled (all commands depend on fabric-carpet, no spark needed).
+- **survival_server**: Set to `true` to enable survival server tools (teleport/home/warp via clickable messages, weather/time, backup, etc.). **Default off.** Player-exclusive commands are sent as clickable `tellraw` messages so the player executes them with their own identity.
+- **economy**: Set to `true` to enable economy tools (balance/pay via clickable messages, in-memory price list). **Default off.** Requires EssentialsX or a Vault-compatible economy plugin on the server.
+- **chat_log**: Set to `true` to enable chat log search (in-memory only, no file writes, cleared on restart). **Default off.**
 
 > [!TIP]
 > `location_plguin` and `where2go_plugin` manage the same set of waypoint tools (`add_pos_pos`, `add_pos_here`, `remove_pos`, `search_pos`, `get_all_pos`). It is recommended to enable only **one** of them to avoid duplicate tool registrations. `where2go_plugin` is enabled by default.
+
+> [!IMPORTANT]
+> `technical_server`, `survival_server`, `economy`, and `chat_log` are **gated modules** — they are disabled by default and must be explicitly enabled in `config.json`. They use **in-memory storage only** (no file writes) and player-exclusive commands are sent as clickable `tellraw` messages (MCDR's `execute()` runs as console and cannot execute player-only commands).
 
 After modifying the configuration, use `!!gamesai reload` to apply the changes.
 
@@ -164,6 +176,17 @@ Each tool module requires its own server-side dependency to function:
 If a required dependency is not installed, the corresponding tools will return an error message when called.
 
 ## What's New
+
+### Version 0.3.0
+
+- Added **gated modules** (all **disabled by default**, opt-in via `config.json`):
+  - `technical_server`: TPS/MSPT query (via carpet script, no spark), Carpet rules, forceload, locate, scoreboard, death log (in-memory). Requires `carpet` enabled.
+  - `survival_server`: teleport/home/warp/claim via **clickable `tellraw` messages** (player executes with own identity, fixes `execute()`-as-console issue), weather/time, broadcast, backup.
+  - `economy`: balance/pay via clickable messages, in-memory price list.
+  - `chat_log`: in-memory chat log search (no file writes, cleared on restart).
+- All gated modules use **in-memory storage only** (no file writes).
+- Event listeners (`on_player_death`, `on_player_chat`) now respect config (no recording when module disabled).
+- Removed problematic tools: `view_inventory` (privacy), `count_entities` (buggy logic), `region_snapshot` (external plugin dependency).
 
 ### Version 0.2.0
 
