@@ -1,1 +1,3 @@
 *.mcdr
+__pycache__/
+*.pyc

@@ -1,6 +1,6 @@
 {
     "id": "games_ai_extra",
-    "version": "0.1.2",
+    "version": "0.2.0",
     "name": "GamesAI Extra",
     "description":{
         "zh_cn": "GamesAI的功能性扩展",

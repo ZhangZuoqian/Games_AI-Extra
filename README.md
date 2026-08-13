@@ -33,6 +33,7 @@ English  |  [简体中文](/README.zh-CN.md)  |  [繁體中文](/README.zh-TW.md
     - [Skills](#skills)
   - [Dependencies](#dependencies)
   - [What's New](#whats-new)
+    - [Version 0.2.0](#version-020)
     - [Version 0.1.2](#version-012)
     - [Version 0.1.1](#version-011)
   - [License](#license)
@@ -59,13 +60,15 @@ The default configuration file (`config/games_ai_extra/config.json`) structure i
 {
     "carpet": true,
     "location_plguin": false,
-    "where2go_plugin": true
+    "where2go_plugin": true,
+    "bot_group": true
 }
 ```
 
 - **carpet**: Set to `true` to enable the Carpet fake player tools. Set to `false` to disable them.
 - **location_plguin**: Set to `true` to enable waypoint management via the [Location Marker](https://mcdreforged.com/plugin/location_marker) MCDR plugin. Set to `false` to disable.
 - **where2go_plugin**: Set to `true` to enable waypoint management via the [Where2Go](https://mcdreforged.com/plugin/where2go) MCDR plugin. Set to `false` to disable.
+- **bot_group**: Set to `true` to enable batch fake player operations (group spawn/kill/action, saved group configs). Requires `carpet` to be enabled. Set to `false` to disable.
 
 > [!TIP]
 > `location_plguin` and `where2go_plugin` manage the same set of waypoint tools (`add_pos_pos`, `add_pos_here`, `remove_pos`, `search_pos`, `get_all_pos`). It is recommended to enable only **one** of them to avoid duplicate tool registrations. `where2go_plugin` is enabled by default.
@@ -161,6 +164,13 @@ Each tool module requires its own server-side dependency to function:
 If a required dependency is not installed, the corresponding tools will return an error message when called.
 
 ## What's New
+
+### Version 0.2.0
+
+- Added `bot_group` module: batch fake player operations (`group_spawn`, `group_kill`, `group_action`, `save_group`, `group_run`, `group_list`, `group_delete`)
+- Added `bot_group.md` skill for AI batch bot operation guidance
+- Refactored skill loading to support multiple skill files
+- Bot group configs persist to `config/games_ai_extra/bot_groups.json`
 
 ### Version 0.1.2
 
