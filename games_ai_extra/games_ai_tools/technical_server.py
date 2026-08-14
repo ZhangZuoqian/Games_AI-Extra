@@ -447,6 +447,160 @@ def scoreboard_manage(source: CommandSource, ai_prefix: str, action: str, name: 
     return f"未知操作: {action}"
 
 
+# ── 玩家活动统计 ──────────────────────────────────────────
+
+# 统计项 key → (scoreboard criterion, 人类可读说明, 单位换算提示)
+# criterion 用 1.13+ 的 minecraft.* 命名（1.20+ 与旧版通用名）
+_PLAYER_STATS_MAP = {
+    "play_time":      ("minecraft.play_time",      "在线时长",     "单位 tick，÷20 得秒"),
+    "deaths":         ("minecraft.death_count",    "死亡次数",     ""),
+    "walk_distance":  ("minecraft.walk_one_cm",    "步行距离",     "单位 cm，÷100 得米"),
+    "sprint_distance":("minecraft.sprint_one_cm",  "冲刺距离",     "单位 cm，÷100 得米"),
+    "crouch_distance":("minecraft.crouch_one_cm",  "潜行距离",     "单位 cm，÷100 得米"),
+    "jumps":          ("minecraft.jump",           "跳跃次数",     ""),
+    "mob_kills":      ("minecraft.mob_kills",      "击杀生物数",   ""),
+    "player_kills":   ("minecraft.player_kills",   "击杀玩家数",   ""),
+    "damage_taken":   ("minecraft.damage_taken",   "累计受伤",     "单位 0.1 心"),
+    "damage_dealt":   ("minecraft.damage_dealt",   "累计造成伤害", "单位 0.1 心"),
+}
+
+
+@register_tool(
+    description="查询玩家活动统计（在线时长、死亡次数、移动距离等）。基于 scoreboard 计分项，需服务器已用对应 criterion 创建计分项。用于服务器运营数据统计。注意：查询前需确保对应计分项已创建，例如要查在线时长需先执行 scoreboard objectives add play_time minecraft.play_time。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "player": {
+                "type": "string",
+                "description": "玩家名"
+            },
+            "stats": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "要查的统计项，可选值：play_time(在线时长)、deaths(死亡次数)、walk_distance(步行)、sprint_distance(冲刺)、crouch_distance(潜行)、jumps(跳跃)、mob_kills(击杀生物)、player_kills(击杀玩家)、damage_taken(受伤)、damage_dealt(造成伤害)。不填则默认查 play_time、deaths、walk_distance 三项。"
+            }
+        },
+        "required": ["player"]
+    }
+)
+def query_player_stats(source: CommandSource, ai_prefix: str, player: str, stats: list = None):
+    if not stats:
+        stats = ["play_time", "deaths", "walk_distance"]
+    # 校验统计项名
+    invalid = [s for s in stats if s not in _PLAYER_STATS_MAP]
+    if invalid:
+        return f"未知统计项：{invalid}。可选：{list(_PLAYER_STATS_MAP.keys())}"
+    # 玩家名校验（防命令注入：只允许字母数字下划线，3-16 字符）
+    import re as _re
+    if not _re.fullmatch(r"\w{3,16}", player):
+        return f"玩家名不合法：{player!r}（仅允许 3-16 个字母/数字/下划线）"
+    server = source.get_server()
+    source.reply(f"{ai_prefix}正在查询 {player} 的活动统计...")
+    # 假设 objective 名 = 统计项 key（管理员需按此命名创建）
+    # objective 不存在时服务器会报错，玩家能在聊天栏看到
+    hints = []
+    for s in stats:
+        criterion, label, unit_hint = _PLAYER_STATS_MAP[s]
+        server.execute(f"scoreboard players get {player} {s}")
+        h = f"{s}={label}"
+        if unit_hint:
+            h += f"（{unit_hint}）"
+        hints.append(h)
+    hint_str = "；".join(hints)
+    return (f"已查询 {player} 的 {len(stats)} 项统计，结果在聊天栏。"
+            f"如提示计分项不存在，需先创建：scoreboard objectives add <key> <criterion>。"
+            f"统计项说明：{hint_str}")
+
+
+# ── 强加载区块详情 ────────────────────────────────────────
+
+@register_tool(
+    description="列出所有维度（主世界/下界/末地）的强加载区块（forceload）。逐个维度执行 forceload query 输出。用于排查'哪些区块被强制加载、是否需要清理'。注意：vanilla forceload query 只能列出由 forceload 命令添加的区块，列不出玩家视野/spawn 区块/传送门等 ticket 来源。",
+    parameters={}
+)
+def query_forceload_detail(source: CommandSource, ai_prefix: str):
+    server = source.get_server()
+    source.reply(f"{ai_prefix}正在查询所有维度的强加载区块...")
+    # 逐维度查询：vanilla forceload query 只列当前执行维度
+    for dim in ("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"):
+        server.execute(f"execute in {dim} run forceload query")
+    return ("已查询三个维度的强加载区块，结果在聊天栏。"
+            "每个维度会显示该维度的 forceload 区块列表。"
+            "注意：仅含 forceload 命令添加的区块，不含玩家/spawn 等其他加载来源。")
+
+
+# ── 实体密度热力图 ────────────────────────────────────────
+
+@register_tool(
+    description="统计当前维度各区块的实体密度，找出实体超载区域。通过 Scarpet entity_list 遍历所有实体并按区块坐标聚合，输出实体总数、按类型分布、以及实体密度最高的区块。生电服排查刷怪塔/农场卡顿时定位元凶必备。注意：仅统计当前维度；Scarpet 脚本首次使用建议在测试服验证输出。",
+    parameters={
+        "type": "object",
+        "properties": {
+            "top": {
+                "type": "integer",
+                "description": "可选。输出实体密度最高的前 N 个区块，默认 5，最大 20。"
+            }
+        }
+    }
+)
+def query_entity_heatmap(source: CommandSource, ai_prefix: str, top: int = 5):
+    if top < 1:
+        top = 5
+    elif top > 20:
+        top = 20
+    server = source.get_server()
+    source.reply(f"{ai_prefix}正在统计当前维度实体密度（可能耗时数秒）...")
+    # Scarpet 脚本：
+    # 1. entity_list('*') 取当前维度所有实体
+    # 2. 按类型统计分布
+    # 3. 按区块坐标(cx,cz)聚合实体数
+    # 4. 输出总数 + 类型 top + 区块密度 top
+    #
+    # 注意：entity_list / query / 向量分量访问(p:x) 等 Scarpet API
+    # 已对照官方文档，但语法细节建议首次在测试服验证
+    script = (
+        # 取全部实体
+        "es = entity_list('*'); "
+        "total = length(es); "
+        "print('当前维度总实体数: ' + total); "
+        # 按类型统计
+        "types = m(); "
+        "for(es, e -> ( "
+        "  t = query(e, 'type'); "
+        "  types[t] = (types[t] ?? 0) + 1 "
+        ")); "
+        # 按区块统计
+        "chunks = m(); "
+        "for(es, e -> ( "
+        "  p = query(e, 'pos'); "
+        "  cx = floor(p:x / 16); "
+        "  cz = floor(p:z / 16); "
+        "  k = cx + ',' + cz; "
+        "  chunks[k] = (chunks[k] ?? 0) + 1 "
+        ")); "
+        # 输出类型分布（全部）
+        "print('--- 按类型分布 ---'); "
+        "for(types, (k, v) -> print(k + ': ' + v)); "
+        # 输出区块密度 top N（转成 list 排序）
+        f"print('--- 实体密度最高的 {top} 个区块 ---'); "
+        "pairs = l(); "
+        "for(chunks, (k, v) -> push(pairs, l(v, k))); "
+        f"sorted = sort(pairs, (a, b) -> a:0 > b:0); "
+        f"n = min({top}, length(sorted)); "
+        "i = 0; "
+        "while(i < n, ( "
+        "  p = sorted:i; "
+        "  print('区块(' + p:1 + '): ' + p:0 + ' 个实体'); "
+        "  i += 1 "
+        "))"
+    )
+    server.execute(f"script run {script}")
+    return ("已执行实体密度统计，结果在聊天栏/控制台。"
+            "输出包含：总实体数、按类型分布、实体密度最高的区块坐标。"
+            "如某区块实体数异常高，可能是刷怪塔/农场堆积，建议前往排查或清理。"
+            "注意：仅统计当前维度，切换维度需玩家在对应维度执行。")
+
+
 # ── 监听玩家死亡事件（由 MCDR 事件触发，记录到内存）────────
 
 def on_player_death(server, player, message):

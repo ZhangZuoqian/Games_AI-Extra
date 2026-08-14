@@ -32,6 +32,9 @@
 | `scoreboard_query` | 查询分数 | `objective`, `target` |
 | `scoreboard_set` | 设置分数 | `objective`, `target`, `score` |
 | `scoreboard_manage` | 管理计分项 | `action`, `name?`, `criterion?` |
+| `query_player_stats` | 查询玩家活动统计 | `player`, `stats?` |
+| `query_forceload_detail` | 列出全维度强加载区块 | 无 |
+| `query_entity_heatmap` | 统计实体密度热力图 | `top?` |
 
 ---
 
@@ -210,14 +213,66 @@ scoreboard_manage(action="remove", name="oldCount")
 
 ---
 
+## 10. 玩家活动统计（`query_player_stats`）
+
+```
+# 查默认三项（在线时长、死亡次数、步行距离）
+query_player_stats(player="Steve")
+
+# 指定统计项
+query_player_stats(player="Steve", stats=["play_time", "mob_kills", "jumps"])
+```
+
+**可查统计项**：`play_time`(在线时长)、`deaths`(死亡次数)、`walk_distance`(步行)、`sprint_distance`(冲刺)、`crouch_distance`(潜行)、`jumps`(跳跃)、`mob_kills`(击杀生物)、`player_kills`(击杀玩家)、`damage_taken`(受伤)、`damage_dealt`(造成伤害)
+
+> ⚠️ **前置条件**：需服务器已用对应 criterion 创建计分项，且 objective 名与统计项 key 一致。例如查在线时长需先执行 `scoreboard objectives add play_time minecraft.play_time`。如未创建，查询时服务器会报错提示。
+
+**单位说明**：在线时长单位是 tick（÷20 得秒），距离单位是 cm（÷100 得米），伤害单位是 0.1 心。
+
+---
+
+## 11. 全维度强加载区块（`query_forceload_detail`）
+
+```
+# 列出三个维度所有 forceload 区块
+query_forceload_detail()
+```
+
+**与 `forceload(action="query")` 的区别**：后者只查当前所在维度，本工具一次查全部三个维度（主世界/下界/末地）。
+
+> ⚠️ **限制**：vanilla `forceload query` 只能列出由 `forceload` 命令添加的区块。玩家视野加载、spawn 常加载区块、传送门 ticket 等其他加载来源**无法列出**——这是 Minecraft 引擎限制，非本工具问题。
+
+---
+
+## 12. 实体密度热力图（`query_entity_heatmap`）
+
+```
+# 统计当前维度实体密度，输出 top 5 区块
+query_entity_heatmap()
+
+# 输出 top 10
+query_entity_heatmap(top=10)
+```
+
+**输出内容**：当前维度总实体数、按类型分布、实体密度最高的 N 个区块坐标。
+
+**用途**：服务器卡顿时定位"哪个区块实体超载"，常见于刷怪塔掉落物堆积、农场实体未清理。
+
+> ⚠️ 两个注意点：
+> - **仅统计当前维度**：需玩家在对应维度执行，或先传送过去
+> - **Scarpet 脚本**：基于 `entity_list('*')` 遍历，首次使用建议在测试服验证输出正常
+
+---
+
 ## 典型工作流
 
 ### 场景 A：服务器卡顿排查
 > 用户："服务器很卡，帮我看看"
 1. `get_server_tps(detail=True)` — 看 TPS/MSPT
-2. 如果 MSPT 高 → `clear_entities(entity_type="item")` — 清理掉落物
-3. 检查 forceload → `forceload(action="query")`
-4. 必要时调慢 tickrate 调试 → `set_tickrate(rate=10)`
+2. 如果 MSPT 高 → `query_entity_heatmap(top=10)` — 定位实体超载区块
+3. 针对超载区块 → `clear_entities(entity_type="item", center_pos=[x,y,z], radius=32)` — 精准清理
+4. 检查强加载 → `query_forceload_detail()` — 看是否有过多 forceload
+5. 必要时调慢 tickrate 调试 → `set_tickrate(rate=10)`
 
 ### 场景 B：调试 TNT 机器
 1. `carpet_rule_get(rule="tntOptimization")` — 查当前规则
