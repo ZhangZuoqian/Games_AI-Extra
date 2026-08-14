@@ -294,3 +294,59 @@ query_entity_heatmap(top=10)
 - `carpet_rule_set` / `set_tickrate` / `forceload` / `clear_entities` 都是修改性操作，**先告知用户再执行**
 - 性能查询结果通过聊天栏/控制台返回，AI 需要读取后向用户解读
 - 死亡日志只在内存里存，最多 500 条，超了自动滚掉旧的，不写文件
+
+---
+
+## 未验证项及验证方法
+
+以下功能已通过代码编译和 stub 模拟装载验证（工具注册、命令生成、参数校验均正常），但 **Scarpet 脚本和跨维度命令在真实 Minecraft 服务器的实际输出尚未实测**。首次使用请按下面方法验证。
+
+### 1. `query_forceload_detail` — 跨维度 forceload 输出
+
+**未验证点**：`execute in <dim> run forceload query` 在三个维度的输出格式，以及无 forceload 区块时服务器的返回内容。
+
+**验证方法**：
+1. 在服务器先手动添加一个测试强加载区块：
+   ```
+   forceload add 0 0
+   ```
+2. 调用 `query_forceload_detail()`
+3. 检查聊天栏/控制台是否依次出现三个维度的查询结果
+4. 预期：主世界应显示 `[0, 0]` 区块，下界/末地应显示 "No forceloaded chunks" 或类似空结果提示
+5. 验证完清理：`forceload remove 0 0`
+
+**如果失败**：可能是某维度输出格式特殊导致 AI 无法解读，需观察实际输出后调整工具返回的说明文字。
+
+### 2. `query_entity_heatmap` — Scarpet 实体统计脚本
+
+**未验证点**：Scarpet 脚本中的 `entity_list('*')`、`query(e, 'type')`、`query(e, 'pos')`、向量分量访问 `p:x` / `p:z`、`sort()` 比较函数、`m()` map 和 `l()` list 构造等 API 的语法细节。已对照 fabric-carpet 官方文档，但 Scarpet 不同版本语法略有差异。
+
+**验证方法**：
+1. 在测试服（建议空旷区域，先 spawn 几个实体便于观察）调用 `query_entity_heatmap()`
+2. 检查聊天栏/控制台输出是否包含：
+   - `当前维度总实体数: N`
+   - `--- 按类型分布 ---` 后跟各类型计数
+   - `--- 实体密度最高的 5 个区块 ---` 后跟区块坐标和实体数
+3. 如果输出正常，再用 `top=10` 测一次边界
+
+**如果失败**：把控制台的 Scarpet 报错原文发给开发者。常见可能问题：
+- `p:x` 向量分量访问语法在某些 carpet 版本需写成 `p ~ 'x'`
+- `sort()` 的比较函数签名可能不同
+- `m()` / `l()` 构造器在老版本需用 `map()` / `list()`
+
+### 验证状态汇总
+
+| 工具 | 代码编译 | stub 装载 | 真实服务器 |
+|------|---------|----------|-----------|
+| `get_server_tps` | ✅ | ✅ | ✅（已用） |
+| `carpet_rule_get/set` | ✅ | ✅ | ✅（已用） |
+| `forceload` | ✅ | ✅ | ✅（已用） |
+| `locate_structure` | ✅ | ✅ | ✅（已用） |
+| `convert_dimension_pos` | ✅ | ✅ | ✅（已用） |
+| `query_death_log` | ✅ | ✅ | ✅（v0.3.2 已修） |
+| `set_tickrate` | ✅ | ✅ | ✅（已用） |
+| `clear_entities` | ✅ | ✅ | ✅（已用） |
+| `scoreboard_*` | ✅ | ✅ | ✅（已用） |
+| `query_player_stats` | ✅ | ✅ | ⏳ 待实测（依赖 scoreboard 计分项是否创建） |
+| `query_forceload_detail` | ✅ | ✅ | ⏳ 待实测（跨维度输出格式） |
+| `query_entity_heatmap` | ✅ | ✅ | ⏳ 待实测（Scarpet 脚本语法） |
