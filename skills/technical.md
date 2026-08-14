@@ -330,9 +330,9 @@ query_entity_heatmap(top=10)
 3. 如果输出正常，再用 `top=10` 测一次边界
 
 **如果失败**：把控制台的 Scarpet 报错原文发给开发者。常见可能问题：
-- `p:x` 向量分量访问语法在某些 carpet 版本需写成 `p ~ 'x'`
-- `sort()` 的比较函数签名可能不同
-- `m()` / `l()` 构造器在老版本需用 `map()` / `list()`
+- `sort()` 自定义比较函数 `(a, b) -> a:0 > b:0` 语法可能不支持——Scarpet 的 `sort()` 默认升序，若不支持比较函数需改成先排序再 `reverse()`，或用 `sort(pairs, key:0)` 形式
+- `m()` / `l()` 构造器在老版本 carpet 需用 `map()` / `list()`
+- `p:x` 向量分量访问语法需确认（现代 Scarpet 用 `:x`，不存在 `~` 写法——`~` 是查实体属性用的）
 
 ### 验证状态汇总
 
@@ -343,7 +343,7 @@ query_entity_heatmap(top=10)
 | `forceload` | ✅ | ✅ | ✅（已用） |
 | `locate_structure` | ✅ | ✅ | ✅（已用） |
 | `convert_dimension_pos` | ✅ | ✅ | ✅（已用） |
-| `query_death_log` | ✅ | ✅ | ✅（v0.3.2 已修） |
+| `query_death_log` | ✅ | ✅ | ⏳ 待实测（v0.3.2 修复误判逻辑后未在真实服验证） |
 | `set_tickrate` | ✅ | ✅ | ✅（已用） |
 | `clear_entities` | ✅ | ✅ | ✅（已用） |
 | `scoreboard_*` | ✅ | ✅ | ✅（已用） |
