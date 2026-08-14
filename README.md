@@ -33,6 +33,7 @@ English  |  [简体中文](/README.zh-CN.md)  |  [繁體中文](/README.zh-TW.md
     - [Skills](#skills)
   - [Dependencies](#dependencies)
   - [What's New](#whats-new)
+    - [Version 0.3.2](#version-032)
     - [Version 0.3.1](#version-031)
     - [Version 0.3.0](#version-030)
     - [Version 0.2.0](#version-020)
@@ -194,6 +195,13 @@ Each tool module requires its own server-side dependency to function:
 If a required dependency is not installed, the corresponding tools will return an error message when called.
 
 ## What's New
+
+### Version 0.3.2
+
+Security fixes (no behavior changes, no new features):
+
+- `__init__.py`: `_try_record_death` now uses a strict regex (`_DEATH_PATTERN`) to match the death-broadcast format (player name + death description) instead of substring matching on death keywords. Prevents player chat containing words like "died"/"死" from being mis-recorded as a death event. Also removed overly-broad Chinese keywords ("死", "被", "掉落") that caused false positives.
+- `chat_log.py`: `search_chat_log` now parses `since`/`until` into Unix timestamps via `_parse_time_to_timestamp` and compares timestamps instead of raw strings. Fixes incorrect results when date formats differ (e.g. `2024-1-5` vs `2024-01-05`). Invalid date formats now return a clear error instead of silently returning empty results.
 
 ### Version 0.3.1
 

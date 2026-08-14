@@ -20,7 +20,7 @@ __all__ = [
 
 PLUGIN_METADATA = {
     "id": "games_ai_extra",
-    "version": "0.3.0",
+    "version": "0.3.2",
     "name": "GamesAI Extra",
     "description":{
         "zh_cn": "GamesAI的功能性扩展",
@@ -342,21 +342,27 @@ _DEATH_KEYWORDS = (
     "died", "was slain", "was shot", "fell", "drowned", "burned", "blew up",
     "was blown up", "hit the ground", "withered", "starved", "was struck",
     "was killed", "experienced kinetic energy", "went up in flames",
-    "死", "被", "掉落", "淹死", "烧死", "炸死", "饿死", "摔死",
+    "淹死", "烧死", "炸死", "饿死", "摔死", "掉落",
 )
 
-# 匹配 "Steve was slain by Zombie" / "Steve fell from a high place" 等
-# 服务端死亡广播第一段通常是玩家名
-_DEATH_PATTERN = _re.compile(r"^\S.{0,32}\s+(?:[\w]+\s+){1,6}(?:" + "|".join(
-    k.replace(" ", r"\s+") for k in _DEATH_KEYWORDS
-) + r")", _re.IGNORECASE)
+# 匹配死亡广播：玩家名（不含空格）+ 空格 + 死亡描述（以关键词开头）
+# 格式："Steve was slain by Zombie" / "Steve fell from a high place" / "Steve 淹死了"
+# 玩家名后直接跟死亡描述，不要求中间有额外词汇
+# Minecraft 用户名长度 3-16，用 {3,16} 进一步排除 "I was slain..." 这类聊天
+_DEATH_PATTERN = _re.compile(
+    r"^\S{3,16}\s+(?:" + "|".join(
+        k.replace(" ", r"\s+") for k in _DEATH_KEYWORDS
+    ) + r")",
+    _re.IGNORECASE
+)
 
 
 def _try_record_death(server, content: str):
     """尝试从服务端消息中解析死亡事件并记录到死亡日志。
 
     死亡广播格式：<玩家名> <死亡描述>，可能带 § 颜色码。
-    先剥离颜色码再解析，避免取到 §e 之类的前缀。
+    先剥离颜色码，再用 _DEATH_PATTERN 正则精确匹配，避免玩家聊天含
+    "died"/"死" 等词被误判为死亡广播。
     """
     try:
         from games_ai_extra.games_ai_tools.technical_server import on_player_death as _record
@@ -364,9 +370,9 @@ def _try_record_death(server, content: str):
         clean = _re.sub(r"§.", "", content).strip()
         if not clean:
             return
-        # 简单启发式：消息含死亡关键词时认为是死亡广播
-        content_lower = clean.lower()
-        if not any(k in content_lower for k in _DEATH_KEYWORDS):
+        # 用正则精确匹配死亡广播格式（玩家名 + 死亡描述），
+        # 比关键词包含更严格，减少误判
+        if not _DEATH_PATTERN.match(clean):
             return
         # 取消息第一个词作为玩家名（死亡广播格式通常以玩家名开头）
         parts = clean.split(maxsplit=1)

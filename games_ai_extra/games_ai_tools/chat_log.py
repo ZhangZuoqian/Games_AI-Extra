@@ -55,6 +55,23 @@ def _append_chat_record(player: str, message: str):
         }
     }
 )
+def _parse_time_to_timestamp(s: str) -> int | None:
+    """把用户输入的时间字符串解析成 unix 秒。
+
+    支持 YYYY-MM-DD 和 YYYY-MM-DD HH:MM:SS 两种格式。
+    解析失败返回 None。
+    """
+    if not s:
+        return None
+    s = s.strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return int(time.mktime(time.strptime(s, fmt)))
+        except (ValueError, OverflowError):
+            continue
+    return None
+
+
 def search_chat_log(source: CommandSource, ai_prefix: str, player: str = None, keyword: str = None, since: str = None, until: str = None, limit: int = 20):
     source.reply(f"{ai_prefix}正在搜索聊天记录...")
     if not _CHAT_RECORDS:
@@ -66,6 +83,15 @@ def search_chat_log(source: CommandSource, ai_prefix: str, player: str = None, k
     if limit > 200:
         limit = 200  # 上限保护，避免一次返回太多
 
+    # 把 since/until 解析成 timestamp，避免字符串比较在格式不统一时出错
+    # （"2024-1-5" vs "2024-01-05" 字符串比较结果不对，timestamp 比较才准）
+    since_ts = _parse_time_to_timestamp(since) if since else None
+    until_ts = _parse_time_to_timestamp(until) if until else None
+    if since and since_ts is None:
+        return f"since 格式错误：{since!r}，应为 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS"
+    if until and until_ts is None:
+        return f"until 格式错误：{until!r}，应为 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS"
+
     total = len(_CHAT_RECORDS)
     # 直接遍历 deque 过滤，不做 list() 全量拷贝
     kw_lower = keyword.lower() if keyword else None
@@ -75,9 +101,10 @@ def search_chat_log(source: CommandSource, ai_prefix: str, player: str = None, k
             continue
         if kw_lower and kw_lower not in r.get("message", "").lower():
             continue
-        if since and r.get("time", "") < since:
+        r_ts = r.get("timestamp", 0)
+        if since_ts is not None and r_ts < since_ts:
             continue
-        if until and r.get("time", "") > until:
+        if until_ts is not None and r_ts > until_ts:
             continue
         filtered.append(r)
 
