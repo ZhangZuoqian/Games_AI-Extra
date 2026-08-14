@@ -33,6 +33,9 @@
     - [Skills](#skills)
   - [依賴說明](#依賴說明)
   - [本次更新](#本次更新)
+    - [Version 0.3.2](#version-032)
+    - [Version 0.3.1](#version-031)
+    - [Version 0.3.0](#version-030)
     - [Version 0.1.2](#version-012)
     - [Version 0.1.1](#version-011)
   - [授權條款](#授權條款)
@@ -161,6 +164,38 @@ GamesAI Extra 透過 `register_skills()` 提供以下內建技能：
 如果未安裝對應依賴，呼叫相關工具時將回傳錯誤提示。
 
 ## 本次更新
+
+### Version 0.3.2
+
+安全修復（無行為變更，無新功能）：
+
+- `__init__.py`：`_try_record_death` 改用嚴格正則 `_DEATH_PATTERN` 匹配死亡廣播格式（玩家名 + 死亡描述），替代關鍵詞子串匹配。避免玩家聊天中含 "died"/"死" 等詞被誤判為死亡事件。同時移除過寬的中文關鍵詞（"死"、"被"、"掉落"）以減少誤判。
+- `chat_log.py`：`search_chat_log` 現透過 `_parse_time_to_timestamp` 將 `since`/`until` 解析為 Unix 時間戳並按時間戳比較，替代原來的字串比較。修復日期格式不統一時查詢錯誤（如 `2024-1-5` 與 `2024-01-05`）。非法日期格式現回傳明確錯誤提示，而非靜默回傳空結果。
+
+### Version 0.3.1
+
+工具使用與安全優化（無行為變更，無新功能）：
+
+- `carpet.py`：`bot_timed_action` 改用 `threading.Timer` 替代 `time.sleep`，不再阻塞 MCDR 主執行緒。`spawn_bot`、`bot_look`、`bot_timed_action` 新增名稱/位置校驗，防止指令注入。
+- `bot_group.py`：假人組配置從 JSON 檔案改為記憶體儲存（無檔案寫入）。`group_spawn` 不再逐個假人刷屏回覆。
+- `technical_server.py`：簡化 Scarpet 腳本（函式定義前置）。`carpet_rule_set` 現按白名單校驗規則名與取值。
+- `survival_server.py`：`_send_clickable_cmd` 在嵌入 `tellraw` JSON 前對指令轉義。`backup_manage` 轉義備註並校驗槽位範圍。
+- `economy.py`：`pay_player` 強制將金額轉為浮點數並設上限，校驗玩家名。`price_list` 新增 `_normalize_item` 校驗物品 ID。
+- `chat_log.py`：`search_chat_log` 直接遍歷 deque，不再 `list()` 全量拷貝；新增 `limit` 上限。
+- `__init__.py`：`_try_record_death` 在解析死亡廣播中的玩家名前先剝離 Minecraft 顏色碼（`§x`）。
+
+### Version 0.3.0
+
+- 新增**首次啟動設定精靈**（`!!gai_setup`）：門控模組在管理員設定前不會載入。控制台橫幅提示 + 管理員上線提示。
+- 新增**門控模組**（全部**預設關閉**，透過 `!!gai_setup` 顯式開啟）：
+  - `technical_server`：TPS/MSPT 查詢（透過 carpet Scarpet `last_tick_times()`，無需 spark）、Carpet 規則、強載入、定位、記分板、死亡日誌（記憶體儲存）。需開啟 `carpet`。
+  - `survival_server`：傳送/家/地標/領地透過**可點擊 `tellraw` 訊息**（玩家以自身身分執行，修復 `execute()` 以控制台身分執行的問題）、天氣/時間、廣播、備份（含 back/confirm/abort 完整流程）。
+  - `economy`：餘額/轉帳透過可點擊訊息，記憶體價格表。
+  - `chat_log`：記憶體聊天記錄搜尋（無檔案寫入，重啟清空）。
+- 所有門控模組**僅使用記憶體儲存**（無檔案寫入）。
+- 修復指令語法錯誤（已對照上游文件核對）：Scarpet `tps()`/`mspt()` 不存在（用 `last_tick_times()`）、`balancetop` ≠ 個人餘額、`homes` 僅玩家可用、`backup confirm` 需先 `back`。
+- 事件處理透過 `on_user_info`（MCDR 無 `on_player_death`/`on_player_chat` 事件）；監聽器遵循設定（模組關閉時不記錄）。
+- 移除有問題的工具：`view_inventory`（隱私）、`count_entities`（邏輯有 bug）、`region_snapshot`（依賴外部插件）。
 
 ### Version 0.1.2
 
