@@ -33,6 +33,7 @@ English  |  [简体中文](/README.zh-CN.md)  |  [繁體中文](/README.zh-TW.md
     - [Skills](#skills)
   - [Dependencies](#dependencies)
   - [What's New](#whats-new)
+    - [Version 0.3.1](#version-031)
     - [Version 0.3.0](#version-030)
     - [Version 0.2.0](#version-020)
     - [Version 0.1.2](#version-012)
@@ -193,6 +194,18 @@ Each tool module requires its own server-side dependency to function:
 If a required dependency is not installed, the corresponding tools will return an error message when called.
 
 ## What's New
+
+### Version 0.3.1
+
+Tool usage and security improvements (no behavior changes, no new features):
+
+- `carpet.py`: `bot_timed_action` now uses `threading.Timer` instead of `time.sleep` — no longer blocks the MCDR main thread. Added name/position validation to `spawn_bot`, `bot_look`, `bot_timed_action` to prevent command injection.
+- `bot_group.py`: group configs switched from JSON file to in-memory storage (no file writes). `group_spawn` no longer spams one reply per bot.
+- `technical_server.py`: simplified Scarpet script (function defined before call). `carpet_rule_set` now validates rule name and value against a whitelist.
+- `survival_server.py`: `_send_clickable_cmd` escapes the command before embedding in `tellraw` JSON. `backup_manage` escapes comment and validates slot range.
+- `economy.py`: `pay_player` force-converts amount to float with an upper bound, validates player name. `price_list` adds `_normalize_item` to validate item IDs.
+- `chat_log.py`: `search_chat_log` iterates the deque directly instead of `list()`-copying all records; added a `limit` cap.
+- `__init__.py`: `_try_record_death` strips Minecraft color codes (`§x`) before parsing the player name from death broadcasts.
 
 ### Version 0.3.0
 
