@@ -33,6 +33,7 @@
     - [Skills](#skills)
   - [依賴說明](#依賴說明)
   - [本次更新](#本次更新)
+    - [Version 0.1.3](#version-013)
     - [Version 0.1.2](#version-012)
     - [Version 0.1.1](#version-011)
   - [授權條款](#授權條款)
@@ -161,6 +162,10 @@ GamesAI Extra 透過 `register_skills()` 提供以下內建技能：
 如果未安裝對應依賴，呼叫相關工具時將回傳錯誤提示。
 
 ## 本次更新
+
+### Version 0.1.3
+
+- 修复了一些问题
 
 ### Version 0.1.2
 

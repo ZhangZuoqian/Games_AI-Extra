@@ -33,6 +33,7 @@
     - [Skills](#skills)
   - [依赖说明](#依赖说明)
   - [本次更新](#本次更新)
+    - [Version 0.1.3](#version-013)
     - [Version 0.1.2](#version-012)
     - [Version 0.1.1](#version-011)
   - [许可证](#许可证)
@@ -161,6 +162,10 @@ GamesAI Extra 通过 `register_skills()` 提供以下内置技能：
 如果未安装对应依赖，调用相关工具时将返回错误提示。
 
 ## 本次更新
+
+### Version 0.1.3
+
+- 修复了一些问题
 
 ### Version 0.1.2
 

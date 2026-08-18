@@ -10,7 +10,7 @@ __all__ = ['carpet', 'location_plguin', 'where2go_plugin']
 
 PLUGIN_METADATA = {
     "id": "games_ai_extra",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "name": "GamesAI Extra",
     "description":{
         "zh_cn": "GamesAI的功能性扩展",
@@ -25,7 +25,7 @@ PLUGIN_METADATA = {
 }
 
 def on_load(server: PluginServerInterface, old):
-    register_self(server.get_self_metadata.id)
+    register_self(PLUGIN_METADATA.get("version", "0.1.3"))
 
     # Register carpet fake player control skill
     # Supports both extracted directory (dev) and packed .mcdr zip (distribution)

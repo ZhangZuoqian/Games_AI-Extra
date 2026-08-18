@@ -33,6 +33,7 @@ English  |  [简体中文](/README.zh-CN.md)  |  [繁體中文](/README.zh-TW.md
     - [Skills](#skills)
   - [Dependencies](#dependencies)
   - [What's New](#whats-new)
+    - [Version 0.1.3](#version-013)
     - [Version 0.1.2](#version-012)
     - [Version 0.1.1](#version-011)
   - [License](#license)
@@ -161,6 +162,10 @@ Each tool module requires its own server-side dependency to function:
 If a required dependency is not installed, the corresponding tools will return an error message when called.
 
 ## What's New
+
+### Version 0.1.3
+
+- Fixed some issues
 
 ### Version 0.1.2
 
