@@ -25,7 +25,7 @@ PLUGIN_METADATA = {
 }
 
 def on_load(server: PluginServerInterface, old):
-    register_self(PLUGIN_METADATA.get("version", "0.1.3"))
+    register_self(PLUGIN_METADATA.get("id", "games_ai_extra"))
 
     # Register carpet fake player control skill
     # Supports both extracted directory (dev) and packed .mcdr zip (distribution)
