@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # GamesAI Extra for MCDReforged
 
@@ -9,10 +9,10 @@ English  |  [简体中文](/README.zh-CN.md)  |  [繁體中文](/README.zh-TW.md
 </div>
 
 > [!NOTE]
-> **GamesAI Extra** is a functional extension for [GamesAI](https://github.com/PengZixuan30/Games_AI). It provides **Carpet fake player (bot) control** tools and **waypoint (location) management** tools, allowing the AI to spawn/control fake players and manage waypoints on your Minecraft server.
+> **GamesAI Extra** is a functional extension for [GamesAI](https://github.com/PengZixuan30/Games_AI). It provides **Carpet fake player (bot) control** tools, **waypoint (location) management** tools, **Minecraft Wiki search** and **whitelist management** tools, allowing the AI to spawn/control fake players, manage waypoints, search the Minecraft Wiki and manage the whitelist on your Minecraft server.
 
 > [!IMPORTANT]
-> This plugin requires **GamesAI >= 0.6.1** to be installed and loaded first. GamesAI Extra follows the [Extension Plugin System](https://github.com/PengZixuan30/Games_AI#custom-tools-in-your-mcdr-plugin) — tools registered this way are identical to built-in tools.
+> This plugin requires **GamesAI >= 0.6.4** to be installed and loaded first. GamesAI Extra follows the [Extension Plugin System](https://github.com/PengZixuan30/Games_AI#custom-tools-in-your-mcdr-plugin) — tools registered this way are identical to built-in tools.
 
 <details>
 <summary>Table of Contents (click to expand)</summary>
@@ -30,9 +30,12 @@ English  |  [简体中文](/README.zh-CN.md)  |  [繁體中文](/README.zh-TW.md
       - [Timed Actions](#timed-actions)
       - [Custom Commands](#custom-commands)
     - [Waypoint Management](#waypoint-management)
+    - [Minecraft Wiki Search](#minecraft-wiki-search)
+    - [Whitelist Management](#whitelist-management)
     - [Skills](#skills)
   - [Dependencies](#dependencies)
   - [What's New](#whats-new)
+    - [Version 0.2.0](#version-020)
     - [Version 0.1.3](#version-013)
     - [Version 0.1.2](#version-012)
     - [Version 0.1.1](#version-011)
@@ -50,7 +53,7 @@ Run the following command in the MCDR console to install the plugin:
 
 Alternatively, get it from the [MCDR Plugin Repository](https://mcdreforged.com/plugin/games_ai_extra) and place it in your plugin directory.
 
-No additional Python packages are required — this plugin only depends on `games_ai`.
+This plugin requires the Python packages `requests` and `beautifulsoup4`, which are declared in the plugin metadata and installed automatically when using `!!MCDR plugin install`. If you install a packed `.mcdr` file manually, make sure these packages are available in your Python environment.
 
 ## Configuration
 
@@ -60,13 +63,17 @@ The default configuration file (`config/games_ai_extra/config.json`) structure i
 {
     "carpet": true,
     "location_plguin": false,
-    "where2go_plugin": true
+    "where2go_plugin": true,
+    "whitelist_api": true,
+    "web_search": true
 }
 ```
 
 - **carpet**: Set to `true` to enable the Carpet fake player tools. Set to `false` to disable them.
 - **location_plguin**: Set to `true` to enable waypoint management via the [Location Marker](https://mcdreforged.com/plugin/location_marker) MCDR plugin. Set to `false` to disable.
 - **where2go_plugin**: Set to `true` to enable waypoint management via the [Where2Go](https://mcdreforged.com/plugin/where2go) MCDR plugin. Set to `false` to disable.
+- **whitelist_api**: Set to `true` to enable whitelist management via the [WhitelistAPI](https://mcdreforged.com/plugin/whitelist_api) MCDR plugin. Set to `false` to disable.
+- **web_search**: Set to `true` to enable the Minecraft Wiki search tool. Set to `false` to disable.
 
 > [!TIP]
 > `location_plguin` and `where2go_plugin` manage the same set of waypoint tools (`add_pos_pos`, `add_pos_here`, `remove_pos`, `search_pos`, `get_all_pos`). It is recommended to enable only **one** of them to avoid duplicate tool registrations. `where2go_plugin` is enabled by default.
@@ -138,6 +145,22 @@ Waypoint tools are provided by either `location_plguin` (Location Marker) or `wh
 | `search_pos` | `name` | Search for a waypoint by name and return its details. |
 | `get_all_pos` | _(none)_ | Get a list of all registered waypoints. |
 
+### Minecraft Wiki Search
+
+| Tool | Parameters | Description |
+|:---:|:---:|:---|
+| `search_minecraft_wiki` | `query` | Search the Minecraft Wiki. Uses `minecraft.wiki` when the server language is English, otherwise `zh.minecraft.wiki`. Search pages return a list of result titles; exact matches return the (truncated) article content. Also registered for the Mineflayer Bot controller. |
+
+### Whitelist Management
+
+Whitelist tools are provided by the `whitelist_api` module and require the [WhitelistAPI](https://mcdreforged.com/plugin/whitelist_api) MCDR plugin.
+
+| Tool | Parameters | Description |
+|:---:|:---:|:---|
+| `get_whitelist_name` | _(none)_ | Get the list of all whitelisted players. |
+| `add_to_whitelist` | `player` | Add a player to the whitelist. Requires caller permission level ≥ 3. |
+| `remove_from_whitelist` | `player` | Remove a player from the whitelist. Requires caller permission level ≥ 3. |
+
 ### Skills
 
 GamesAI Extra provides the following built-in skill, registered via `register_skills()`:
@@ -158,10 +181,20 @@ Each tool module requires its own server-side dependency to function:
 | `carpet` | Server-side mod [fabric-carpet](https://github.com/gnembon/fabric-carpet) |
 | `location_plguin` | MCDR plugin [Location Marker](https://mcdreforged.com/plugin/location_marker) |
 | `where2go_plugin` | MCDR plugin [Where2Go](https://mcdreforged.com/plugin/where2go) |
+| `whitelist_api` | MCDR plugin [WhitelistAPI](https://mcdreforged.com/plugin/whitelist_api) |
+| `web_search` | Python packages `requests` and `beautifulsoup4` (installed automatically) |
 
 If a required dependency is not installed, the corresponding tools will return an error message when called.
 
 ## What's New
+
+### Version 0.2.0
+
+- Added `web_search` module: `search_minecraft_wiki` tool for searching the Minecraft Wiki (English or Chinese wiki based on the server language), available to both the AI and the Mineflayer Bot controller
+- Added `whitelist_api` module: `get_whitelist_name`, `add_to_whitelist` and `remove_from_whitelist` tools for whitelist management via the WhitelistAPI MCDR plugin (add/remove require permission level ≥ 3)
+- All user-facing tool messages now use translation keys with built-in language files (`en_us`, `zh_cn`, `zh_tw`)
+- Bumped GamesAI requirement to >= 0.6.4
+- Added Python requirements `requests` and `beautifulsoup4` for the Wiki search tool
 
 ### Version 0.1.3
 
@@ -170,7 +203,7 @@ If a required dependency is not installed, the corresponding tools will return a
 ### Version 0.1.2
 
 - Added `@register_bot_tool()` decorator to `spawn_bot` and `kill_bot` for Mineflayer Bot support
-- Registered `carpet.md` skill via `register_skills()` API (GamesAI 0.6.1+)
+- Registered `carpet.md` skill via `register_skills()` API
 - Added `register_self()` support for automatic reload on `!!gamesai reload`
 - Supports both extracted directory (dev) and packed `.mcdr` zip (distribution)
 

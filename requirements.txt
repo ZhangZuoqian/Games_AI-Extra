@@ -1,0 +1,3 @@
+# GamesAI Extra Python dependencies
+requests
+beautifulsoup4

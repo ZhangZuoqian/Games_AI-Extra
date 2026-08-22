@@ -39,28 +39,28 @@ def spawn_bot(source: CommandSource, ai_prefix: str, name: str, pos: list | None
         cmd_prefix = ""
     if dim:
         if pos and len(pos) == 3:
-            source.reply(f"{ai_prefix}正在在维度 {dim} 的坐标 {pos} 处生成假人 {name} ...")
+            source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.spawning_bot_at_dim_pos", name=name, dim=dim, pos=pos)}')
             server.execute(f"{cmd_prefix}player {name} spawn at {pos[0]} {pos[1]} {pos[2]} facing 0 0 in {dim}")
             return f"假人 {name} 已在维度 {dim} 的坐标 {pos} 处生成"
         elif player:
-            source.reply(f"{ai_prefix}正在在 {player} 身边生成假人 {name} ...")
+            source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.spawning_bot_near_player", name=name, player=player)}')
             server.execute(f"execute as {player} at @s run player {name} spawn")
             return f"假人 {name} 已生成在 {player} 的位置"
         else:
-            source.reply(f"{ai_prefix}正在在维度 {dim} 生成假人 {name} ...")
+            source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.spawning_bot_in_dim", name=name, dim=dim)}')
             server.execute(f"{cmd_prefix}player {name} spawn at ~ ~ ~ facing 0 0 in {dim}")
             return f"假人 {name} 已在维度 {dim} 的 ~ ~ ~ 位置生成"
     else:
         if pos and len(pos) == 3:
-            source.reply(f"{ai_prefix}正在在坐标 {pos} 处生成假人 {name} ...")
+            source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.spawning_bot_at_pos", name=name, pos=pos)}')
             server.execute(f"{cmd_prefix}player {name} spawn at {pos[0]} {pos[1]} {pos[2]}")
             return f"假人 {name} 已在坐标 {pos} 处生成"
         elif player:
-            source.reply(f"{ai_prefix}正在在 {player} 身边生成假人 {name} ...")
+            source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.spawning_bot_near_player", name=name, player=player)}')
             server.execute(f"execute as {player} at @s run player {name} spawn")
             return f"假人 {name} 已生成在 {player} 的位置"
         else:
-            source.reply(f"{ai_prefix}正在生成假人 {name} ...")
+            source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.spawning_bot", name=name)}')
             server.execute(f"{cmd_prefix}player {name} spawn")
             return f"假人 {name} 已在出生点生成"
 
@@ -77,7 +77,7 @@ def spawn_bot(source: CommandSource, ai_prefix: str, name: str, pos: list | None
 @register_bot_tool()
 def kill_bot(source: CommandSource, ai_prefix: str, name: str):
     server = source.get_server()
-    source.reply(f"{ai_prefix}正在移除假人 {name} ...")
+    source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.killing_bot", name=name)}')
     server.execute(f"player {name} kill")
     return f"假人 {name} 已移除"
 
@@ -104,7 +104,7 @@ def kill_bot(source: CommandSource, ai_prefix: str, name: str):
 })
 def bot_action(source: CommandSource, ai_prefix: str, name: str, action: str, interval: int = 1):
     server = source.get_server()
-    source.reply(f"{ai_prefix}正在让假人 {name} 执行 {action} ...")
+    source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.bot_executing_action", name=name, action=action)}')
     cmd = f"player {name} {action}"
     if action in ("attack", "use", "mine"):
         cmd += f" interval {interval}"
@@ -130,7 +130,7 @@ def bot_action(source: CommandSource, ai_prefix: str, name: str, action: str, in
 })
 def bot_move(source: CommandSource, ai_prefix: str, name: str, direction: str):
     server = source.get_server()
-    source.reply(f"{ai_prefix}正在让假人 {name} 向 {direction} 移动...")
+    source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.bot_moving", name=name, direction=direction)}')
     server.execute(f"player {name} move {direction}")
     return f"假人 {name} 正在向 {direction} 移动。如需停止，请使用 stop 动作"
 
@@ -152,7 +152,7 @@ def bot_move(source: CommandSource, ai_prefix: str, name: str, direction: str):
 })
 def bot_look(source: CommandSource, ai_prefix: str, name: str, target: str):
     server = source.get_server()
-    source.reply(f"{ai_prefix}正在让假人 {name} 看向 {target} ...")
+    source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.bot_looking", name=name, target=target)}')
     direction_words = {"north", "south", "east", "west", "up", "down"}
     target_lower = target.strip().lower()
     if target_lower in direction_words or target_lower.startswith("at "):
@@ -184,7 +184,7 @@ def bot_hotbar(source: CommandSource, ai_prefix: str, name: str, slot: int):
     server = source.get_server()
     if not (1 <= slot <= 9):
         return f"快捷栏编号必须在 1~9 之间，你输入的是 {slot}"
-    source.reply(f"{ai_prefix}正在切换假人 {name} 的快捷栏到第 {slot} 格...")
+    source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.bot_switching_hotbar", name=name, slot=slot)}')
     server.execute(f"player {name} hotbar {slot}")
     return f"假人 {name} 的快捷栏已切换到第 {slot} 格"
 
@@ -224,7 +224,7 @@ def bot_timed_action(source: CommandSource, ai_prefix: str, name: str, action: s
     else:
         cmd = f"player {name} {action}"
 
-    source.reply(f"{ai_prefix}假人 {name} 开始 {action}，将持续 {duration} 秒...")
+    source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.bot_timed_action", name=name, action=action, duration=duration)}')
     server.execute(cmd)
     time.sleep(duration)
     server.execute(f"player {name} stop")
@@ -249,6 +249,6 @@ def bot_timed_action(source: CommandSource, ai_prefix: str, name: str, action: s
 def bot_command(source: CommandSource, ai_prefix: str, name: str, command: str):
     server = source.get_server()
     full_cmd = f"player {name} {command}"
-    source.reply(f"{ai_prefix}正在执行: /{full_cmd}")
+    source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.executing_player_command", command=full_cmd)}')
     server.execute(full_cmd)
     return f"已对假人 {name} 执行: /{full_cmd}"

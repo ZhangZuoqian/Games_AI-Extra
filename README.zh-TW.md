@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # GamesAI Extra for MCDReforged
 
@@ -9,10 +9,10 @@
 </div>
 
 > [!NOTE]
-> **GamesAI Extra** 是 [GamesAI](https://github.com/PengZixuan30/Games_AI) 的功能性擴展插件。它為 AI 提供了 **Carpet 假人（Bot）控制**工具和**路徑點（座標）管理**工具，允許 AI 在你的 Minecraft 伺服器上生成、控制假人以及管理路徑點。
+> **GamesAI Extra** 是 [GamesAI](https://github.com/PengZixuan30/Games_AI) 的功能性擴展插件。它為 AI 提供了 **Carpet 假人（Bot）控制**工具、**路徑點（座標）管理**工具、**Minecraft Wiki 搜尋**與**白名單管理**工具，允許 AI 在你的 Minecraft 伺服器上生成、控制假人、管理路徑點、搜尋 Wiki 以及管理白名單。
 
 > [!IMPORTANT]
-> 此插件需要 **GamesAI >= 0.6.1** 已安裝並先載入。GamesAI Extra 遵循[擴展插件系統](https://github.com/PengZixuan30/Games_AI#在自己的mcdr插件中自訂工具)——以此方式註冊的工具與內建工具完全相同。
+> 此插件需要 **GamesAI >= 0.6.4** 已安裝並先載入。GamesAI Extra 遵循[擴展插件系統](https://github.com/PengZixuan30/Games_AI#在自己的mcdr插件中自訂工具)——以此方式註冊的工具與內建工具完全相同。
 
 <details>
 <summary>目錄（點擊展開）</summary>
@@ -30,9 +30,12 @@
       - [限時動作](#限時動作)
       - [自訂指令](#自訂指令)
     - [路徑點管理](#路徑點管理)
+    - [Minecraft Wiki 搜尋](#minecraft-wiki-搜尋)
+    - [白名單管理](#白名單管理)
     - [Skills](#skills)
   - [依賴說明](#依賴說明)
   - [本次更新](#本次更新)
+    - [Version 0.2.0](#version-020)
     - [Version 0.1.3](#version-013)
     - [Version 0.1.2](#version-012)
     - [Version 0.1.1](#version-011)
@@ -50,7 +53,7 @@
 
 或者從 [MCDR 插件倉庫](https://mcdreforged.com/plugin/games_ai_extra) 取得並放置到你的插件目錄中。
 
-無需額外安裝 Python 套件——此插件僅依賴 `games_ai`。
+此插件需要 Python 套件 `requests` 和 `beautifulsoup4`，它們已在插件元資料中宣告，透過 `!!MCDR plugin install` 安裝時會自動安裝。若手動放置打包後的 `.mcdr` 檔案，請確保你的 Python 環境中已安裝這些套件。
 
 ## 設定
 
@@ -60,13 +63,17 @@
 {
     "carpet": true,
     "location_plguin": false,
-    "where2go_plugin": true
+    "where2go_plugin": true,
+    "whitelist_api": true,
+    "web_search": true
 }
 ```
 
 - **carpet**：設為 `true` 啟用 Carpet 假人工具；設為 `false` 停用。
 - **location_plguin**：設為 `true` 啟用基於 [Location Marker](https://mcdreforged.com/plugin/location_marker) MCDR 插件的路徑點管理；設為 `false` 停用。
 - **where2go_plugin**：設為 `true` 啟用基於 [Where2Go](https://mcdreforged.com/plugin/where2go) MCDR 插件的路徑點管理；設為 `false` 停用。
+- **whitelist_api**：設為 `true` 啟用基於 [WhitelistAPI](https://mcdreforged.com/plugin/whitelist_api) MCDR 插件的白名單管理；設為 `false` 停用。
+- **web_search**：設為 `true` 啟用 Minecraft Wiki 搜尋工具；設為 `false` 停用。
 
 > [!TIP]
 > `location_plguin` 和 `where2go_plugin` 提供的是同一套路徑點工具（`add_pos_pos`、`add_pos_here`、`remove_pos`、`search_pos`、`get_all_pos`）。建議只啟用**其中一個**，避免工具重複註冊。預設啟用 `where2go_plugin`。
@@ -138,6 +145,22 @@
 | `search_pos` | `name` | 按名稱搜尋路徑點並回傳詳細資訊。 |
 | `get_all_pos` | _（無）_ | 取得所有已註冊的路徑點列表。 |
 
+### Minecraft Wiki 搜尋
+
+| 工具 | 參數 | 用途 |
+|:---:|:---:|:---|
+| `search_minecraft_wiki` | `query` | 搜尋 Minecraft Wiki。伺服器語言為英文時使用 `minecraft.wiki`，否則使用 `zh.minecraft.wiki`。搜尋結果頁回傳標題列表，精確匹配時回傳（截斷後的）條目正文。同時註冊為 Mineflayer Bot 工具。 |
+
+### 白名單管理
+
+白名單工具由 `whitelist_api` 模組提供，需要 [WhitelistAPI](https://mcdreforged.com/plugin/whitelist_api) MCDR 插件。
+
+| 工具 | 參數 | 用途 |
+|:---:|:---:|:---|
+| `get_whitelist_name` | _（無）_ | 取得所有白名單玩家列表。 |
+| `add_to_whitelist` | `player` | 將一名玩家新增到白名單。需要發起者權限等級 ≥ 3。 |
+| `remove_from_whitelist` | `player` | 將一名玩家從白名單移除。需要發起者權限等級 ≥ 3。 |
+
 ### Skills
 
 GamesAI Extra 透過 `register_skills()` 提供以下內建技能：
@@ -158,19 +181,29 @@ GamesAI Extra 透過 `register_skills()` 提供以下內建技能：
 | `carpet` | 伺服器端模組 [fabric-carpet](https://github.com/gnembon/fabric-carpet) |
 | `location_plguin` | MCDR 插件 [Location Marker](https://mcdreforged.com/plugin/location_marker) |
 | `where2go_plugin` | MCDR 插件 [Where2Go](https://mcdreforged.com/plugin/where2go) |
+| `whitelist_api` | MCDR 插件 [WhitelistAPI](https://mcdreforged.com/plugin/whitelist_api) |
+| `web_search` | Python 套件 `requests` 和 `beautifulsoup4`（自動安裝） |
 
 如果未安裝對應依賴，呼叫相關工具時將回傳錯誤提示。
 
 ## 本次更新
 
+### Version 0.2.0
+
+- 新增 `web_search` 模組：`search_minecraft_wiki` 工具，用於搜尋 Minecraft Wiki（根據伺服器語言自動選擇英文或中文 Wiki），AI 與 Mineflayer Bot 均可呼叫
+- 新增 `whitelist_api` 模組：`get_whitelist_name`、`add_to_whitelist`、`remove_from_whitelist` 三個白名單管理工具，基於 WhitelistAPI MCDR 插件（新增/移除需要權限等級 ≥ 3）
+- 所有面向玩家的工具訊息改用翻譯鍵，內建 `en_us`、`zh_cn`、`zh_tw` 語言檔案
+- GamesAI 依賴要求提升至 >= 0.6.4
+- 新增 Python 依賴 `requests` 和 `beautifulsoup4`（Wiki 搜尋工具所需）
+
 ### Version 0.1.3
 
-- 修复了一些问题
+- 修復了一些問題
 
 ### Version 0.1.2
 
 - 為 `spawn_bot` 和 `kill_bot` 添加 `@register_bot_tool()` 裝飾器，支援 Mineflayer Bot 呼叫
-- 透過 `register_skills()` API 註冊 `carpet.md` 技能檔案（需 GamesAI 0.6.1+）
+- 透過 `register_skills()` API 註冊 `carpet.md` 技能檔案
 - 添加 `register_self()` 支援，`!!gamesai reload` 時自動重載
 - 支援解壓目錄（開發模式）和打包 `.mcdr` zip（分發模式）兩種執行方式
 

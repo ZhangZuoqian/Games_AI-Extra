@@ -1,1 +1,3 @@
 *.mcdr
+/games_ai
+__pycache__/
