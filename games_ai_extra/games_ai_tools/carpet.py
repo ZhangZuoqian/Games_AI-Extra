@@ -1,4 +1,4 @@
-import time
+import threading
 
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool, register_bot_tool
@@ -19,11 +19,11 @@ from games_ai.games_ai_tool import register_tool, register_bot_tool
         },
         "player": {
             "type": "string",
-            "description": "可选。让假人在某个具体玩家旁边生成。⚠️ 传入 player 时不得同时传入 pos 或 dim，即 player 与 pos、dim 均互斥。若要在玩家身边生成则只传 player，不传其他参数。"
+            "description": "可选。让假人在某个具体玩家旁边生成。[注意] 传入 player 时不得同时传入 pos 或 dim，即 player 与 pos、dim 均互斥。若要在玩家身边生成则只传 player，不传其他参数。"
         },
         "dim": {
             "type": "string",
-            "description": "可选。目标维度 ID，如 minecraft:overworld、minecraft:the_nether、minecraft:the_end。指定后假人将在该维度生成。若同时指定 pos，则在维度的指定坐标生成；若不指定 pos，则在维度的 ~ ~ ~ 位置生成。⚠️ 与 player 互斥，传入 player 时不要传入 dim。配合 pos 使用时需要确保坐标合法。"
+            "description": "可选。目标维度 ID，如 minecraft:overworld、minecraft:the_nether、minecraft:the_end。指定后假人将在该维度生成。若同时指定 pos，则在维度的指定坐标生成；若不指定 pos，则在维度的 ~ ~ ~ 位置生成。[注意] 与 player 互斥，传入 player 时不要传入 dim。配合 pos 使用时需要确保坐标合法。"
         }
     },
     "required": ["name"]
@@ -81,7 +81,7 @@ def kill_bot(source: CommandSource, ai_prefix: str, name: str):
     server.execute(f"player {name} kill")
     return f"假人 {name} 已移除"
 
-# ── 行为控制 ──────────────────────────────────────────────
+# 行为控制
 
 @register_tool(description="控制假人执行一个动作。攻击(attack)需要假人手持武器；使用(use)会右键点击面前的目标；挖掘(mine)会挖掘面前的方块；停止(stop)会取消当前所有动作；丢物品(drop)会丢弃手中物品；潜行(sneak)用于切换潜行状态；交换左右手(swapHands)；骑乘(mount)会骑上附近的实体；下马(dismount)。", parameters={
     "type": "object",
@@ -111,7 +111,7 @@ def bot_action(source: CommandSource, ai_prefix: str, name: str, action: str, in
     server.execute(cmd)
     return f"假人 {name} 正在执行 {action}（间隔={interval} tick）"
 
-# ── 移动控制 ──────────────────────────────────────────────
+# 移动控制
 
 @register_tool(description="控制假人朝指定方向移动。假人会持续向该方向移动，直到你发送 stop 动作或改变方向为止。", parameters={
     "type": "object",
@@ -134,7 +134,7 @@ def bot_move(source: CommandSource, ai_prefix: str, name: str, direction: str):
     server.execute(f"player {name} move {direction}")
     return f"假人 {name} 正在向 {direction} 移动。如需停止，请使用 stop 动作"
 
-# ── 视角控制 ──────────────────────────────────────────────
+# 视角控制
 
 @register_tool(description="控制假人的视线方向。可以看向方向词（north/south/east/west/up/down）或者具体坐标（x y z）。", parameters={
     "type": "object",
@@ -164,7 +164,7 @@ def bot_look(source: CommandSource, ai_prefix: str, name: str, target: str):
     server.execute(cmd)
     return f"假人 {name} 正在看向 {target}"
 
-# ── 快捷栏 ────────────────────────────────────────────────
+# 快捷栏
 
 @register_tool(description="切换假人当前选中的快捷栏格子，范围为 1~9。切换后假人的攻击/使用/挖掘等操作将使用对应格子的物品。", parameters={
     "type": "object",
@@ -188,7 +188,7 @@ def bot_hotbar(source: CommandSource, ai_prefix: str, name: str, slot: int):
     server.execute(f"player {name} hotbar {slot}")
     return f"假人 {name} 的快捷栏已切换到第 {slot} 格"
 
-# ── 限时动作 ────────────────────────────────────────────
+# 限时动作
 
 @register_tool(description="让假人执行一个限时动作，到达指定秒数后自动停止。适用于\"前进5秒后停\"、\"攻击30秒后停\"等场景。注意此工具会阻塞等待直到时间到达（期间无法执行其他操作），适合短时间操作（建议 ≤ 60 秒）。不支持与 interval 同时指定；如需间隔攻击请用 bot_action 手动控制。", parameters={
     "type": "object",
@@ -226,11 +226,11 @@ def bot_timed_action(source: CommandSource, ai_prefix: str, name: str, action: s
 
     source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.bot_timed_action", name=name, action=action, duration=duration)}')
     server.execute(cmd)
-    time.sleep(duration)
-    server.execute(f"player {name} stop")
-    return f"假人 {name} 已完成 {duration} 秒的 {action}，已自动停止"
+    # 用 threading.Timer 替代 time.sleep，避免阻塞 MCDR 主线程
+    threading.Timer(duration, lambda: server.execute(f"player {name} stop")).start()
+    return f"假人 {name} 已开始 {duration} 秒的 {action}，{duration} 秒后自动停止（不阻塞后续操作）"
 
-# ── 自定义指令 ────────────────────────────────────────────
+# 自定义指令
 
 @register_tool(description="向假人发送一条原始的自定义 /player 指令，用于上述工具无法覆盖的高级操作。请在了解 Carpet 假人指令的前提下使用。命令会自动补全为 'player <name> <command>' 格式。", parameters={
     "type": "object",
