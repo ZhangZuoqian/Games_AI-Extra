@@ -8,7 +8,7 @@
 
 ## 核心原则
 
-- tpa/home/warp/领地查询这些是玩家专属命令，MCDR 控制台代执行没用，所以改成发可点击消息让玩家自己点
+- tpa/home/warp/领地查询这些是玩家专属命令。优先走 RCON + `/execute as` 自动代执行；RCON 未开启时才回退发**可点击消息**让玩家自己点
 - 多数工具靠 EssentialsX / 领地插件，不检测装没装，直接发命令，没装会提示未知命令
 - 天气/时间/备份是管理员命令，调用前先跟用户说一声
 - 默认关闭，要在 `config.json` 里开 `survival_server` 才注册
@@ -48,7 +48,7 @@ warp_manage(action="list")
 warp_manage(action="go", name="spawn")
 ```
 
-> 这些命令依赖 EssentialsX 插件，均为玩家专属命令。本工具会向调用玩家发送**可点击消息**（tellraw），玩家点击后以本人身份执行，解决控制台无法代执行玩家命令的问题。控制台发起时会提示让玩家自行点击。
+> 这些命令依赖 EssentialsX 插件，均为玩家专属命令。本工具优先走 RCON + `/execute as`（使用命名选择器 `@e[name="玩家名",type=minecraft:player]`）以玩家身份自动代执行；RCON 未开启时才回退发送**可点击消息**（tellraw）由玩家点击后以本人身份执行。控制台发起时会提示让玩家自行点击。
 
 ---
 
@@ -76,7 +76,7 @@ query_claim(plugin="residence")       # Residence
 query_claim(plugin="lands")           # Lands
 ```
 
-> 领地插件是 Bukkit 的，命令只能玩家执行，所以发可点击消息让玩家自己点。`plugin` 选哪个插件，默认 griefdefender，没装就提示未知命令。
+> 领地插件是 Bukkit 的，命令只能玩家执行。优先走 RCON + `/execute as` 自动代执行；RCON 未开启时才回退发可点击消息让玩家自己点。`plugin` 选哪个插件，默认 griefdefender，没装就提示未知命令。
 
 ---
 
@@ -147,7 +147,7 @@ backup_manage(action="abort")                         # 中断回档
 
 ## 注意事项
 
-- 传送/home/tpa 类命令**必须玩家本人发起**，AI 会发送可点击消息让玩家点击执行
+- 传送/home/tpa 类命令为玩家专属：优先 RCON + `/execute as` 自动代执行；RCON 未开启时 AI 发送可点击消息让玩家点击执行
 - 领地查询结果在聊天栏或控制台，AI 需读取后解读
 - 天气/时间/备份是管理员操作，**先告知用户再执行**
 - 插件没装的话服务端会提示未知命令，跟用户说一声让装上

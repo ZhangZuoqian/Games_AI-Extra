@@ -45,7 +45,7 @@ get_server_tps()                    # 只看当前 TPS/MSPT
 get_server_tps(detail=True)         # 详细：最近 100 tick 的最小/最大/平均耗时
 ```
 
-> **实现说明**：通过 Scarpet 的 `last_tick_times()`（最近 100 个 tick 耗时）自行计算 MSPT（平均值）与 TPS（min(20, 1000/MSPT)），无需 spark。注意 Scarpet 仅暴露最近 100 tick（约 5s）窗口，无法取更长时段。
+> **实现说明**：优先用原版 `/tick query` 命令（RCON 通路，同步拿回输出）获取 TPS/MSPT；服务器无该命令、输出解析失败或 RCON 未开启时，回退到 Scarpet 的 `last_tick_times()`（最近 100 个 tick 耗时）自行计算 MSPT（平均值）与 TPS（min(20, 1000/MSPT)），无需 spark。注意 Scarpet 仅暴露最近 100 tick（约 5s）窗口，无法取更长时段。
 
 **判读标准**：
 - TPS = 20 → 满速，服务器正常
@@ -334,11 +334,22 @@ query_entity_heatmap(top=10)
 - `m()` / `l()` 构造器在老版本 carpet 需用 `map()` / `list()`
 - `p:x` 向量分量访问语法需确认（现代 Scarpet 用 `:x`，不存在 `~` 写法——`~` 是查实体属性用的）
 
+### 3. `get_server_tps` — /tick query 新通路与解析
+
+**未验证点**：v0.3.x 起 TPS 优先走原版 `/tick query`（RCON 通路），输出格式随服务端实现而异（常见为 "Server tick: X ms, average Y ms over the last Z ticks"），`parse_tick_query` 的兼容解析需在真实服务器确认。
+
+**验证方法**：
+1. 在已开启 RCON 的服务器调用 `get_server_tps()`
+2. 预期返回 `服务器性能: TPS=xx.x, MSPT=xx.xms`，数值与 `/tick query` 输出一致
+3. 若返回回退提示（"已通过 carpet script 查询性能..."），说明 `/tick query` 不可用或解析失败，属预期降级
+
+**如果失败**：把控制台 `/tick query` 的原始输出发给开发者，按实际格式扩展 `parse_tick_query`。
+
 ### 验证状态汇总
 
 | 工具 | 代码编译 | stub 装载 | 真实服务器 |
 |------|---------|----------|-----------|
-| `get_server_tps` | [通过] | [通过] | [通过]（已用） |
+| `get_server_tps` | [通过] | [通过] | [待测] 待实测（/tick query 新通路；carpet 回退已用） |
 | `carpet_rule_get/set` | [通过] | [通过] | [通过]（已用） |
 | `forceload` | [通过] | [通过] | [通过]（已用） |
 | `locate_structure` | [通过] | [通过] | [通过]（已用） |

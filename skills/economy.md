@@ -9,7 +9,7 @@
 ## 核心原则
 
 - **依赖经济插件**：余额查询/转账需要服务端安装 EssentialsX（或兼容 Vault 的经济插件）
-- **玩家专属命令**：`balance`/`pay` 是玩家专属命令，MCDR 控制台无法代执行；本工具改为向玩家发送**可点击消息**，玩家点击后以本人身份执行
+- **玩家专属命令**：`balance`/`pay` 是玩家专属命令，MCDR 控制台无法代执行；优先走 RCON + `/execute as` 自动代执行，RCON 未开启时才回退向玩家发送**可点击消息**由本人点击执行
 - **默认关闭**：需在 `config.json` 开启 `economy` 才会注册工具
 - **价格表内存维护**：价格表由本插件内存存储（重启清空，不写入文件），AI 可读写
 
@@ -28,14 +28,14 @@
 ## 1. 余额查询（`get_balance`）
 
 ```
-# 玩家查自己余额（发送可点击消息，玩家点击执行 /balance）
+# 玩家查自己余额（优先 RCON 自动执行；RCON 未开启时发可点击消息）
 get_balance()
 
 # 查询他人余额（直接执行 /balance <player>，控制台可执行）
 get_balance(player="Steve")
 ```
 
-> 依赖 EssentialsX（或兼容 Vault 的经济插件）。查自己余额时 `/balance` 是玩家专属命令，本工具发送可点击消息由玩家本人点击执行；查他人余额用 `/balance <player>`（控制台可执行，需 `essentials.balance.others` 权限）。结果在聊天栏返回。
+> 依赖 EssentialsX（或兼容 Vault 的经济插件）。查自己余额时 `/balance` 是玩家专属命令，本工具优先走 RCON + `/execute as` 自动代执行，RCON 未开启时才回退发送可点击消息由玩家本人点击；查他人余额用 `/balance <player>`（控制台可执行，需 `essentials.balance.others` 权限）。结果在聊天栏返回。
 
 ---
 
