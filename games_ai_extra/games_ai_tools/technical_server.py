@@ -12,24 +12,36 @@ from collections import deque
 
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool
-from games_ai_extra.games_ai_tools._rcon import rcon_exec
 
 
-def _try_rcon(server, command: str) -> str | None:
-    """RCON 执行并返回非空响应文本；RCON 不可用或命令无输出返回 None。
+def _rcon_exec(server, command: str) -> str | None:
+    """模块私有：RCON 优先执行一条控制台命令（普通命令专用）。
 
-    调用方拿到 None 时应回退到 server.execute。
+    契约（与调用方约定）：
+    - 返回非空字符串 → RCON 通路成功，返回命令输出文本；
+    - 返回 None → RCON 未连接或发送失败，本函数内部已调用 server.execute 执行完该命令，
+      调用方禁止再次执行（防止同一条命令执行两遍）。
+    仅 send_command 阶段的通信异常输出 warning 日志；未连接属正常情况，安静降级。
     """
-    resp = rcon_exec(server, command)
-    if resp is not None and resp.strip():
-        return resp.strip()
-    return None
+    rcon = server.rcon
+    # RCON 未连接：安静降级执行（正常情况，不打日志）
+    if not rcon.is_connected():
+        server.execute(command)
+        return None
+    # RCON 已连接，尝试发送指令，仅这里捕获通信异常
+    try:
+        return rcon.send_command(command)
+    except Exception as exc:
+        # RCON 标记在线但通信失败，输出 warning 方便排查 RCON 网络问题
+        server.logger.warning(f"[games_ai_extra] RCON命令发送失败: {exc}, 回退至server.execute模式")
+        server.execute(command)
+        return None
 
 
 # 性能监控
 
 @register_tool(
-    description="查询服务器性能指标：TPS（每秒刻数）、MSPT（每刻毫秒数）。通过 fabric-carpet 的 Scarpet 脚本读取最近 100 tick 的耗时计算，无需 spark。生电服排查卡顿必备。注意：Scarpet 仅暴露最近 100 tick（约 5s）窗口，无法取更长时段。",
+    description="查询服务器性能指标：TPS（每秒刻数）、MSPT（每刻毫秒数）。优先使用原版 /tick query 命令（RCON 通路）获取；命令不可用或 RCON 未开启时回退到 fabric-carpet 的 Scarpet 脚本读取最近 100 tick 耗时计算，无需 spark。生电服排查卡顿必备。注意：Scarpet 仅暴露最近 100 tick（约 5s）窗口，无法取更长时段。",
     parameters={
         "type": "object",
         "properties": {
@@ -40,10 +52,54 @@ def _try_rcon(server, command: str) -> str | None:
         }
     }
 )
+def parse_tick_query(text: str | None) -> tuple[float, float] | None:
+    """解析 /tick query 输出，返回 (TPS, MSPT)。
+
+    兼容常见输出格式：
+    - "Server tick: 45.0 ms, average 42.3 ms over the last 100 ticks"
+    - "Server tick: 50.0 ms, average 50.0 ms over the last 100 ticks; 20 TPS"
+    解析失败（含命令不存在/无输出）返回 None，由调用方降级到 carpet script。
+    """
+    if not text:
+        return None
+    mspt = None
+    m = _re.search(r"average\s+([\d.]+)\s*ms", text, _re.IGNORECASE)
+    if m:
+        mspt = float(m.group(1))
+    tps = None
+    m = _re.search(r"([\d.]+)\s*TPS", text, _re.IGNORECASE)
+    if m:
+        tps = float(m.group(1))
+    if tps is None and mspt is not None and mspt > 0:
+        tps = min(20.0, 1000.0 / mspt)
+    if mspt is None and tps is not None and tps > 0:
+        mspt = 1000.0 / tps
+    if tps is None or mspt is None:
+        return None
+    return tps, mspt
+
+
 def get_server_tps(source: CommandSource, ai_prefix: str, detail: bool = False):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在查询服务器性能...")
-    # Scarpet 脚本：先定义 mspt() 函数（用 last_tick_times() 算平均），
+    # 优先用原版 /tick query（RCON 通路，同步拿回输出）。
+    # TPS 是特例：不走通用 _rcon_exec 封装，直接用原生 RCON 接口执行。
+    # 命令不可用（无该命令/解析失败）或 RCON 未开启 → 回退 carpet script 原方案。
+    rcon = server.rcon
+    if rcon.is_connected():
+        try:
+            resp = rcon.send_command("/tick query")
+        except Exception as exc:
+            server.logger.warning(f"[games_ai_extra] RCON命令发送失败: {exc}, 回退至carpet script")
+            resp = None
+        parsed = parse_tick_query(resp) if resp else None
+        if parsed is not None:
+            tps, mspt = parsed
+            out = f"服务器性能: TPS={tps:.1f}, MSPT={mspt:.1f}ms"
+            if detail and resp.strip():
+                out += f"\n详细输出: {resp.strip()}"
+            return out
+    # 回退方案：Scarpet 脚本（原实现）。先定义 mspt() 函数（用 last_tick_times() 算平均），
     # 再计算 TPS，最后 print 输出。函数定义放前面，避免调用时未定义。
     # MSPT = 最近 100 tick 平均耗时；TPS = min(20, 1000/MSPT)
     script = (
@@ -52,10 +108,6 @@ def get_server_tps(source: CommandSource, ai_prefix: str, detail: bool = False):
         "t = min(20, 1000/m); "
         "print('MSPT='+m+' TPS='+t)"
     )
-    # 优先用 RCON 执行，能同步拿回 print 输出；RCON 未开启再回退 execute
-    resp = _try_rcon(server, f"script run {script}")
-    if resp is not None:
-        return f"服务器性能: {resp}"
     server.execute(f"script run {script}")
     if detail:
         # min/max/avg 定位偶发卡顿
@@ -100,10 +152,9 @@ def clear_entities(source: CommandSource, ai_prefix: str, entity_type: str, cent
     else:
         selector = f"@e[type={entity_type}]"
     source.reply(f"{ai_prefix}正在清理 {entity_type}...")
-    resp = _try_rcon(server, f"kill {selector}")
-    if resp is not None:
-        return f"清理结果: {resp}"
-    server.execute(f"kill {selector}")
+    resp = _rcon_exec(server, f"kill {selector}")
+    if resp is not None and resp.strip():
+        return f"清理结果: {resp.strip()}"
     return f"已发送清理指令：kill {selector}"
 
 
@@ -125,16 +176,14 @@ def carpet_rule_get(source: CommandSource, ai_prefix: str, rule: str = None):
     server = source.get_server()
     if rule:
         source.reply(f"{ai_prefix}正在查询 carpet 规则 {rule}...")
-        resp = _try_rcon(server, f"carpet {rule}")
-        if resp is not None:
-            return f"carpet 规则 {rule}: {resp}"
-        server.execute(f"carpet {rule}")
+        resp = _rcon_exec(server, f"carpet {rule}")
+        if resp is not None and resp.strip():
+            return f"carpet 规则 {rule}: {resp.strip()}"
     else:
         source.reply(f"{ai_prefix}正在列出所有 carpet 规则...")
-        resp = _try_rcon(server, "carpet list")
-        if resp is not None:
-            return f"carpet 规则列表: {resp}"
-        server.execute("carpet list")
+        resp = _rcon_exec(server, "carpet list")
+        if resp is not None and resp.strip():
+            return f"carpet 规则列表: {resp.strip()}"
     return f"已发送 carpet 规则查询指令，结果请查看控制台/聊天栏"
 
 
@@ -171,10 +220,9 @@ def carpet_rule_set(source: CommandSource, ai_prefix: str, rule: str, value: str
     if value.lower() not in allowed_values and not is_number:
         return f"value 非法：{value!r}。只允许 true/false/数字 或常见枚举（default/optimized/precise）"
     source.reply(f"{ai_prefix}正在修改 carpet 规则 {rule} = {value}...")
-    resp = _try_rcon(server, f"carpet {rule} {value}")
-    if resp is not None:
-        return f"修改结果: {resp}"
-    server.execute(f"carpet {rule} {value}")
+    resp = _rcon_exec(server, f"carpet {rule} {value}")
+    if resp is not None and resp.strip():
+        return f"修改结果: {resp.strip()}"
     return f"已发送修改指令：carpet {rule} {value}。如失败请检查权限或规则名拼写"
 
 
@@ -208,10 +256,9 @@ def forceload(source: CommandSource, ai_prefix: str, action: str, from_pos: list
     server = source.get_server()
     if action == "query":
         source.reply(f"{ai_prefix}正在查询强加载区块...")
-        resp = _try_rcon(server, "forceload query")
-        if resp is not None:
-            return f"强加载区块: {resp}"
-        server.execute("forceload query")
+        resp = _rcon_exec(server, "forceload query")
+        if resp is not None and resp.strip():
+            return f"强加载区块: {resp.strip()}"
         return "已发送查询指令，结果请查看聊天栏"
     elif action == "add":
         if not from_pos:
@@ -219,10 +266,9 @@ def forceload(source: CommandSource, ai_prefix: str, action: str, from_pos: list
         to = to_pos if to_pos else from_pos
         source.reply(f"{ai_prefix}正在添加强加载区块 {from_pos} -> {to}...")
         cmd = f"forceload add {from_pos[0]} {from_pos[1]} {to[0]} {to[1]}"
-        resp = _try_rcon(server, cmd)
-        if resp is not None:
-            return f"添加结果: {resp}"
-        server.execute(cmd)
+        resp = _rcon_exec(server, cmd)
+        if resp is not None and resp.strip():
+            return f"添加结果: {resp.strip()}"
         return f"已添加强加载区块 {from_pos} -> {to}"
     elif action == "remove":
         if not from_pos:
@@ -230,17 +276,15 @@ def forceload(source: CommandSource, ai_prefix: str, action: str, from_pos: list
         to = to_pos if to_pos else from_pos
         source.reply(f"{ai_prefix}正在移除强加载区块 {from_pos} -> {to}...")
         cmd = f"forceload remove {from_pos[0]} {from_pos[1]} {to[0]} {to[1]}"
-        resp = _try_rcon(server, cmd)
-        if resp is not None:
-            return f"移除结果: {resp}"
-        server.execute(cmd)
+        resp = _rcon_exec(server, cmd)
+        if resp is not None and resp.strip():
+            return f"移除结果: {resp.strip()}"
         return f"已移除强加载区块 {from_pos} -> {to}"
     elif action == "remove_all":
         source.reply(f"{ai_prefix}正在移除所有强加载区块...")
-        resp = _try_rcon(server, "forceload remove all")
-        if resp is not None:
-            return f"移除结果: {resp}"
-        server.execute("forceload remove all")
+        resp = _rcon_exec(server, "forceload remove all")
+        if resp is not None and resp.strip():
+            return f"移除结果: {resp.strip()}"
         return "已移除当前玩家所有强加载区块"
     return f"未知操作: {action}"
 
@@ -292,10 +336,9 @@ def locate_structure(source: CommandSource, ai_prefix: str, structure: str, pos:
     else:
         source.reply(f"{ai_prefix}正在搜索附近的 {sid}...")
         cmd = f"locate structure {sid}"
-    resp = _try_rcon(server, cmd)
-    if resp is not None:
-        return f"结构位置: {resp}"
-    server.execute(cmd)
+    resp = _rcon_exec(server, cmd)
+    if resp is not None and resp.strip():
+        return f"结构位置: {resp.strip()}"
     return f"已发送 locate 指令，结果请查看聊天栏"
 
 
@@ -393,10 +436,9 @@ def query_death_log(source: CommandSource, ai_prefix: str, player: str = None, l
 def set_tickrate(source: CommandSource, ai_prefix: str, rate: float):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在设置 tick 速率为 {rate}...")
-    resp = _try_rcon(server, f"tick rate {rate}")
-    if resp is not None:
-        return f"tick 速率设置结果: {resp}"
-    server.execute(f"tick rate {rate}")
+    resp = _rcon_exec(server, f"tick rate {rate}")
+    if resp is not None and resp.strip():
+        return f"tick 速率设置结果: {resp.strip()}"
     return f"已设置 tick 速率为 {rate}。注意：调试完后请用 set_tickrate(20) 恢复正常"
 
 
@@ -423,10 +465,9 @@ def scoreboard_query(source: CommandSource, ai_prefix: str, objective: str, targ
     server = source.get_server()
     source.reply(f"{ai_prefix}正在查询 {target} 的 {objective} 分数...")
     cmd = f"scoreboard players get {target} {objective}"
-    resp = _try_rcon(server, cmd)
-    if resp is not None:
-        return f"{target} 的 {objective}: {resp}"
-    server.execute(cmd)
+    resp = _rcon_exec(server, cmd)
+    if resp is not None and resp.strip():
+        return f"{target} 的 {objective}: {resp.strip()}"
     return f"已发送查询指令：scoreboard players get {target} {objective}。结果请查看聊天栏"
 
 
@@ -455,10 +496,9 @@ def scoreboard_set(source: CommandSource, ai_prefix: str, objective: str, target
     server = source.get_server()
     source.reply(f"{ai_prefix}正在设置 {target} 的 {objective} = {score}...")
     cmd = f"scoreboard players set {target} {objective} {score}"
-    resp = _try_rcon(server, cmd)
-    if resp is not None:
-        return f"设置结果: {resp}"
-    server.execute(cmd)
+    resp = _rcon_exec(server, cmd)
+    if resp is not None and resp.strip():
+        return f"设置结果: {resp.strip()}"
     return f"已设置 {target} 的 {objective} = {score}"
 
 
@@ -488,30 +528,27 @@ def scoreboard_manage(source: CommandSource, ai_prefix: str, action: str, name: 
     server = source.get_server()
     if action == "list":
         source.reply(f"{ai_prefix}正在列出所有计分项...")
-        resp = _try_rcon(server, "scoreboard objectives list")
-        if resp is not None:
-            return f"计分项列表: {resp}"
-        server.execute("scoreboard objectives list")
+        resp = _rcon_exec(server, "scoreboard objectives list")
+        if resp is not None and resp.strip():
+            return f"计分项列表: {resp.strip()}"
         return "已请求计分项列表，结果请查看聊天栏"
     elif action == "add":
         if not name:
             return "add 操作必须指定 name"
         source.reply(f"{ai_prefix}正在创建计分项 {name}（准则: {criterion}）...")
         cmd = f"scoreboard objectives add {name} {criterion}"
-        resp = _try_rcon(server, cmd)
-        if resp is not None:
-            return f"创建结果: {resp}"
-        server.execute(cmd)
+        resp = _rcon_exec(server, cmd)
+        if resp is not None and resp.strip():
+            return f"创建结果: {resp.strip()}"
         return f"已创建计分项 {name}（准则: {criterion}）"
     elif action == "remove":
         if not name:
             return "remove 操作必须指定 name"
         source.reply(f"{ai_prefix}正在删除计分项 {name}...")
         cmd = f"scoreboard objectives remove {name}"
-        resp = _try_rcon(server, cmd)
-        if resp is not None:
-            return f"删除结果: {resp}"
-        server.execute(cmd)
+        resp = _rcon_exec(server, cmd)
+        if resp is not None and resp.strip():
+            return f"删除结果: {resp.strip()}"
         return f"已删除计分项 {name}"
     return f"未知操作: {action}"
 
@@ -570,11 +607,10 @@ def query_player_stats(source: CommandSource, ai_prefix: str, player: str, stats
     for s in stats:
         criterion, label, unit_hint = _PLAYER_STATS_MAP[s]
         cmd = f"scoreboard players get {player} {s}"
-        resp = _try_rcon(server, cmd)
-        if resp is not None:
-            hints.append(f"{label}: {resp}（{s}）")
+        resp = _rcon_exec(server, cmd)
+        if resp is not None and resp.strip():
+            hints.append(f"{label}: {resp.strip()}（{s}）")
         else:
-            server.execute(cmd)
             h = f"{s}={label}"
             if unit_hint:
                 h += f"（{unit_hint}）"
@@ -598,11 +634,9 @@ def query_forceload_detail(source: CommandSource, ai_prefix: str):
     out = []
     for dim in ("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"):
         cmd = f"execute in {dim} run forceload query"
-        resp = _try_rcon(server, cmd)
-        if resp is not None:
-            out.append(f"{dim}: {resp}")
-        else:
-            server.execute(cmd)
+        resp = _rcon_exec(server, cmd)
+        if resp is not None and resp.strip():
+            out.append(f"{dim}: {resp.strip()}")
     if out:
         return "各维度强加载区块:\n" + "\n".join(out)
     return ("已查询三个维度的强加载区块，结果在聊天栏。"
@@ -663,10 +697,9 @@ def query_entity_heatmap(source: CommandSource, ai_prefix: str, top: int = 5):
         f"for(chunks, k -> if(chunks[k] >= 5, print('区块(' + k + '): ' + chunks[k] + ' 个实体')))"
     )
     # 优先 RCON 拿结果（script 的 print 输出会进 RCON 响应）；未开启回退 execute
-    resp = _try_rcon(server, f"script run {script}")
-    if resp is not None:
-        return f"实体密度统计:\n{resp}"
-    server.execute(f"script run {script}")
+    resp = _rcon_exec(server, f"script run {script}")
+    if resp is not None and resp.strip():
+        return f"实体密度统计:\n{resp.strip()}"
     return ("已执行实体密度统计，结果在聊天栏/控制台。"
             "输出包含：总实体数、按类型分布、实体较多的区块坐标（实体数>=5的才显示）。"
             "如某区块实体数异常高，可能是刷怪塔/农场堆积，建议前往排查或清理。"

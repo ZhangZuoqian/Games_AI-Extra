@@ -10,7 +10,6 @@ import json as _json
 
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool
-from games_ai_extra.games_ai_tools._rcon import rcon_exec
 
 
 # 简易价格表（内存存储，重启清空，可由 AI 通过 modify_custom_tools 修改）
@@ -39,6 +38,58 @@ def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: s
     )
 
 
+def _rcon_exec(server, command: str) -> str | None:
+    """模块私有：RCON 优先执行一条控制台命令（普通命令专用）。
+
+    契约（与调用方约定）：
+    - 返回非空字符串 → RCON 通路成功，返回命令输出文本；
+    - 返回 None → RCON 未连接或发送失败，本函数内部已调用 server.execute 执行完该命令，
+      调用方禁止再次执行（防止同一条命令执行两遍）。
+    仅 send_command 阶段的通信异常输出 warning 日志；未连接属正常情况，安静降级。
+    """
+    rcon = server.rcon
+    # RCON 未连接：安静降级执行（正常情况，不打日志）
+    if not rcon.is_connected():
+        server.execute(command)
+        return None
+    # RCON 已连接，尝试发送指令，仅这里捕获通信异常
+    try:
+        return rcon.send_command(command)
+    except Exception as exc:
+        # RCON 标记在线但通信失败，输出 warning 方便排查 RCON 网络问题
+        server.logger.warning(f"[games_ai_extra] RCON命令发送失败: {exc}, 回退至server.execute模式")
+        server.execute(command)
+        return None
+
+
+def _execute_as_player(source: CommandSource, player_command: str, click_label: str, click_command: str, hint: str = "") -> str:
+    """玩家专属命令：RCON + /execute as 命名选择器优先，RCON 不可用时回退可点击消息。
+
+    - 仅玩家调用者可执行；控制台直接返回提示，请玩家自行输入
+    - 手动判断 RCON 连接状态后再分支，不依赖 _rcon_exec 的自动降级：
+      RCON 关闭时绝不走后台 execute-as（与改造前行为完全一致），发可点击消息由玩家本人点击
+    - 玩家名使用 @e[name="玩家名",type=minecraft:player] 选择器，双引号包裹，兼容带空格/特殊字符 ID
+    """
+    if not source.is_player:
+        return (
+            f"该命令需由玩家本人执行（控制台无法代执行）。请让目标玩家在聊天栏输入：/{click_command}"
+            + (f"\n说明：{hint}" if hint else "")
+        )
+    server = source.get_server()
+    rcon = server.rcon
+    if rcon.is_connected():
+        player_sel = f'@e[name="{source.player}",type=minecraft:player]'
+        try:
+            resp = rcon.send_command(f"/execute as {player_sel} run {player_command}")
+        except Exception as exc:
+            server.logger.warning(f"[games_ai_extra] RCON命令发送失败: {exc}, 回退至可点击消息")
+            resp = None
+        if resp is not None and resp.strip():
+            return f"指令执行结果: {resp.strip()}"
+    # RCON 未开启 / 开启但无返回 → 旧版可点击兜底
+    return _send_clickable_cmd(source, click_label, click_command, hint)
+
+
 @register_tool(
     description="查询玩家经济余额。需要服务端安装 EssentialsX（或兼容 Vault 的经济插件）。不指定 player 时向调用玩家发送可点击消息由其本人点击执行 /balance（玩家专属）；指定 player 时直接执行 /balance <player>（控制台可执行，需 essentials.balance.others 权限）。若未安装经济插件，服务端会返回未知命令提示。",
     parameters={
@@ -54,20 +105,20 @@ def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: s
 def get_balance(source: CommandSource, ai_prefix: str, player: str = None):
     server = source.get_server()
     if not player:
-        # 查自己余额：balance 无参是玩家专属命令，先尝试 RCON + execute as 模拟玩家执行
+        # 查自己余额：balance 无参是玩家专属命令，走 RCON + /execute as 或可点击兜底
         if not source.is_player:
             return "控制台查询自己余额无意义（控制台无账户）。请指定 player 参数查询他人余额。"
         source.reply(f"{ai_prefix}正在准备查询你的余额...")
-        resp = rcon_exec(server, f"execute as {source.player} run balance")
-        if resp is not None and resp.strip():
-            return f"你的余额: {resp.strip()}"
-        return _send_clickable_cmd(source, "点击查询余额", "balance", "若提示未知命令，说明服务端未安装经济插件")
+        return _execute_as_player(
+            source, "balance", "点击查询余额", "balance",
+            "若提示未知命令，说明服务端未安装经济插件"
+        )
     # 查他人余额：/balance <player> 控制台可执行（需 essentials.balance.others 权限），优先走 RCON 拿结果
     source.reply(f"{ai_prefix}正在查询 {player} 的余额...")
-    resp = rcon_exec(server, f"balance {player}")
+    resp = _rcon_exec(server, f"balance {player}")
     if resp is not None and resp.strip():
         return f"{player} 的余额: {resp.strip()}"
-    server.execute(f"balance {player}")
+    # RCON 未开启/失败：_rcon_exec 已内部降级 execute，无需再执行，直接返回旧版提示
     return f"已发送查询 {player} 余额的指令，结果请查看聊天栏。若提示未知命令，说明服务端未安装经济插件；若提示无权限，需 essentials.balance.others 权限。"
 
 
@@ -105,13 +156,9 @@ def pay_player(source: CommandSource, ai_prefix: str, to_player: str, amount: fl
     # 格式化金额：去掉多余的 0（1.0 → 1，1.50 → 1.5）
     amount_str = f"{amount:g}"
     source.reply(f"{ai_prefix}正在准备向 {to_player} 转账 {amount_str}...")
-    # 先尝试 RCON + execute as 模拟玩家本人执行 pay，成功直接返回结果
-    if source.is_player:
-        resp = rcon_exec(server, f"execute as {source.player} run pay {to_player} {amount_str}")
-        if resp is not None and resp.strip():
-            return f"转账指令执行结果: {resp.strip()}"
-    return _send_clickable_cmd(
-        source, "点击转账", f"pay {to_player} {amount_str}",
+    # pay 是玩家专属命令：RCON + /execute as 优先，RCON 不可用时回退可点击消息
+    return _execute_as_player(
+        source, f"pay {to_player} {amount_str}", "点击转账", f"pay {to_player} {amount_str}",
         "点击后将以本人身份发起转账，请关注聊天栏确认是否成功。若提示未知命令，说明服务端未安装经济插件。"
     )
 
