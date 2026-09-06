@@ -27,6 +27,23 @@ def _append_chat_record(player: str, message: str):
     })
 
 
+def _parse_time_to_timestamp(s: str) -> int | None:
+    """把用户输入的时间字符串解析成 unix 秒。
+
+    支持 YYYY-MM-DD 和 YYYY-MM-DD HH:MM:SS 两种格式。
+    解析失败返回 None。
+    """
+    if not s:
+        return None
+    s = s.strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return int(time.mktime(time.strptime(s, fmt)))
+        except (ValueError, OverflowError):
+            continue
+    return None
+
+
 @register_tool(
     description="搜索服务器聊天记录。可按玩家、关键词、时间范围过滤。用于查证玩家说过什么、追溯纠纷。注意：仅保留本插件运行期间的记录（内存存储，重启清空），默认关闭，需在 config.json 开启 chat_log。",
     parameters={
@@ -55,23 +72,6 @@ def _append_chat_record(player: str, message: str):
         }
     }
 )
-def _parse_time_to_timestamp(s: str) -> int | None:
-    """把用户输入的时间字符串解析成 unix 秒。
-
-    支持 YYYY-MM-DD 和 YYYY-MM-DD HH:MM:SS 两种格式。
-    解析失败返回 None。
-    """
-    if not s:
-        return None
-    s = s.strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-        try:
-            return int(time.mktime(time.strptime(s, fmt)))
-        except (ValueError, OverflowError):
-            continue
-    return None
-
-
 def search_chat_log(source: CommandSource, ai_prefix: str, player: str = None, keyword: str = None, since: str = None, until: str = None, limit: int = 20):
     source.reply(f"{ai_prefix}正在搜索聊天记录...")
     if not _CHAT_RECORDS:

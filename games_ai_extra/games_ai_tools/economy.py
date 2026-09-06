@@ -10,6 +10,7 @@ import json as _json
 
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool
+from games_ai_extra.games_ai_tools._rcon import rcon_exec
 
 
 # 简易价格表（内存存储，重启清空，可由 AI 通过 modify_custom_tools 修改）
@@ -53,13 +54,19 @@ def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: s
 def get_balance(source: CommandSource, ai_prefix: str, player: str = None):
     server = source.get_server()
     if not player:
-        # 查自己余额：balance 无参是玩家专属命令，用可点击消息让玩家本人执行
+        # 查自己余额：balance 无参是玩家专属命令，先尝试 RCON + execute as 模拟玩家执行
         if not source.is_player:
             return "控制台查询自己余额无意义（控制台无账户）。请指定 player 参数查询他人余额。"
         source.reply(f"{ai_prefix}正在准备查询你的余额...")
+        resp = rcon_exec(server, f"execute as {source.player} run balance")
+        if resp is not None and resp.strip():
+            return f"你的余额: {resp.strip()}"
         return _send_clickable_cmd(source, "点击查询余额", "balance", "若提示未知命令，说明服务端未安装经济插件")
-    # 查他人余额：/balance <player> 控制台可执行（需 essentials.balance.others 权限）
+    # 查他人余额：/balance <player> 控制台可执行（需 essentials.balance.others 权限），优先走 RCON 拿结果
     source.reply(f"{ai_prefix}正在查询 {player} 的余额...")
+    resp = rcon_exec(server, f"balance {player}")
+    if resp is not None and resp.strip():
+        return f"{player} 的余额: {resp.strip()}"
     server.execute(f"balance {player}")
     return f"已发送查询 {player} 余额的指令，结果请查看聊天栏。若提示未知命令，说明服务端未安装经济插件；若提示无权限，需 essentials.balance.others 权限。"
 
@@ -82,6 +89,7 @@ def get_balance(source: CommandSource, ai_prefix: str, player: str = None):
     }
 )
 def pay_player(source: CommandSource, ai_prefix: str, to_player: str, amount: float):
+    server = source.get_server()
     # amount 强制转 float 并校验，防止 "1;kill @a" 之类注入
     try:
         amount = float(amount)
@@ -97,6 +105,11 @@ def pay_player(source: CommandSource, ai_prefix: str, to_player: str, amount: fl
     # 格式化金额：去掉多余的 0（1.0 → 1，1.50 → 1.5）
     amount_str = f"{amount:g}"
     source.reply(f"{ai_prefix}正在准备向 {to_player} 转账 {amount_str}...")
+    # 先尝试 RCON + execute as 模拟玩家本人执行 pay，成功直接返回结果
+    if source.is_player:
+        resp = rcon_exec(server, f"execute as {source.player} run pay {to_player} {amount_str}")
+        if resp is not None and resp.strip():
+            return f"转账指令执行结果: {resp.strip()}"
     return _send_clickable_cmd(
         source, "点击转账", f"pay {to_player} {amount_str}",
         "点击后将以本人身份发起转账，请关注聊天栏确认是否成功。若提示未知命令，说明服务端未安装经济插件。"

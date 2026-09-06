@@ -11,6 +11,7 @@ import json as _json
 
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool
+from games_ai_extra.games_ai_tools._rcon import rcon_exec
 
 
 def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: str = "") -> str:
@@ -44,6 +45,20 @@ def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: s
     )
 
 
+def _try_execute_as_player(source: CommandSource, command: str) -> str | None:
+    """玩家专属命令：先尝试 RCON + execute as 模拟玩家本人执行。
+
+    成功返回服务器响应文本；RCON 不可用或执行无输出返回 None，
+    由调用方回退到可点击消息让玩家点击。
+    """
+    if not source.is_player:
+        return None
+    resp = rcon_exec(source.get_server(), f"execute as {source.player} run {command}")
+    if resp is not None and resp.strip():
+        return resp.strip()
+    return None
+
+
 # 传送系统（玩家专属命令，用 tellraw 可点击）
 
 @register_tool(
@@ -61,6 +76,9 @@ def _send_clickable_cmd(source: CommandSource, label: str, command: str, hint: s
 )
 def tpa_request(source: CommandSource, ai_prefix: str, target: str):
     source.reply(f"{ai_prefix}正在准备向 {target} 发送传送请求...")
+    resp = _try_execute_as_player(source, f"tpa {target}")
+    if resp is not None:
+        return f"tpa 指令执行结果: {resp}"
     return _send_clickable_cmd(source, "点击传送", f"tpa {target}", "点击后向目标玩家发送传送请求")
 
 
@@ -87,19 +105,31 @@ def home_manage(source: CommandSource, ai_prefix: str, action: str, name: str = 
         if not name:
             return "set 操作必须指定 home 名称"
         source.reply(f"{ai_prefix}正在准备设置家 {name}...")
+        resp = _try_execute_as_player(source, f"sethome {name}")
+        if resp is not None:
+            return f"sethome 指令执行结果: {resp}"
         return _send_clickable_cmd(source, "点击设置家", f"sethome {name}")
     elif action == "del":
         if not name:
             return "del 操作必须指定 home 名称"
         source.reply(f"{ai_prefix}正在准备删除家 {name}...")
+        resp = _try_execute_as_player(source, f"delhome {name}")
+        if resp is not None:
+            return f"delhome 指令执行结果: {resp}"
         return _send_clickable_cmd(source, "点击删除家", f"delhome {name}")
     elif action == "list":
         source.reply(f"{ai_prefix}正在准备列出你的家...")
+        resp = _try_execute_as_player(source, "homes")
+        if resp is not None:
+            return f"家列表: {resp}"
         return _send_clickable_cmd(source, "点击列出我的家", "homes", "homes 是玩家专属命令（/home 的别名），需本人执行")
     elif action == "go":
         if not name:
             return "go 操作必须指定 home 名称"
         source.reply(f"{ai_prefix}正在准备传送到家 {name}...")
+        resp = _try_execute_as_player(source, f"home {name}")
+        if resp is not None:
+            return f"home 指令执行结果: {resp}"
         return _send_clickable_cmd(source, "点击回家", f"home {name}")
     return f"未知操作: {action}"
 
@@ -125,12 +155,18 @@ def home_manage(source: CommandSource, ai_prefix: str, action: str, name: str = 
 def warp_manage(source: CommandSource, ai_prefix: str, action: str, name: str = None):
     server = source.get_server()
     if action == "list":
+        resp = rcon_exec(server, "warps")
+        if resp is not None and resp.strip():
+            return f"warp 列表: {resp.strip()}"
         server.execute("warps")
         return "已请求列出所有 warp，结果请查看聊天栏"
     elif action == "go":
         if not name:
             return "go 操作必须指定 warp 名称"
         source.reply(f"{ai_prefix}正在准备传送到 warp {name}...")
+        resp = _try_execute_as_player(source, f"warp {name}")
+        if resp is not None:
+            return f"warp 指令执行结果: {resp}"
         return _send_clickable_cmd(source, "点击传送", f"warp {name}")
     return f"未知操作: {action}"
 
@@ -153,12 +189,26 @@ def get_player_info(source: CommandSource, ai_prefix: str, player: str = None):
     server = source.get_server()
     if player:
         source.reply(f"{ai_prefix}正在查询玩家 {player} 的详情...")
+        # 优先走 RCON 直接拿 data 输出，未开启再回退 execute
+        resp = rcon_exec(server, f"execute as {player} run data get entity @s Pos")
+        if resp is not None and resp.strip():
+            hp = rcon_exec(server, f"execute as {player} run data get entity @s Health")
+            dim = rcon_exec(server, f"execute as {player} run data get entity @s Dimension")
+            parts = [f"位置: {resp.strip()}"]
+            if hp is not None and hp.strip():
+                parts.append(f"生命: {hp.strip()}")
+            if dim is not None and dim.strip():
+                parts.append(f"维度: {dim.strip()}")
+            return "玩家详情: " + " | ".join(parts)
         server.execute(f'execute as {player} run data get entity @s Pos')
         server.execute(f'execute as {player} run data get entity @s Health')
         server.execute(f'execute as {player} run data get entity @s Dimension')
         return f"已发送查询 {player} 详情的指令，结果请查看聊天栏"
     else:
         source.reply(f"{ai_prefix}正在查询在线玩家列表...")
+        resp = rcon_exec(server, "list")
+        if resp is not None and resp.strip():
+            return f"在线玩家: {resp.strip()}"
         server.execute("list")
         return "已请求在线玩家列表，结果请查看聊天栏"
 
@@ -188,6 +238,9 @@ def query_claim(source: CommandSource, ai_prefix: str, plugin: str = "griefdefen
     if not cmd:
         return f"未知领地插件类型: {plugin}，支持: griefdefender/residence/lands"
     source.reply(f"{ai_prefix}正在准备通过 {plugin} 查询当前位置领地信息...")
+    resp = _try_execute_as_player(source, cmd)
+    if resp is not None:
+        return f"领地查询结果: {resp}"
     return _send_clickable_cmd(
         source, "点击查询领地", cmd,
         f"若提示未知命令，说明服务端未安装 {plugin} 领地插件"
@@ -227,6 +280,9 @@ def set_weather(source: CommandSource, ai_prefix: str, weather: str, duration: i
     if duration:
         cmd += f" {duration * 20}"
     source.reply(f"{ai_prefix}正在设置天气为 {weather}...")
+    resp = rcon_exec(server, cmd)
+    if resp is not None and resp.strip():
+        return f"天气设置结果: {resp.strip()}"
     server.execute(cmd)
     return f"已发送天气设置指令：/{cmd}"
 
@@ -252,6 +308,9 @@ def set_weather(source: CommandSource, ai_prefix: str, weather: str, duration: i
 def set_time(source: CommandSource, ai_prefix: str, time: int, mode: str = "set"):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在设置时间为 {time}...")
+    resp = rcon_exec(server, f"time {mode} {time}")
+    if resp is not None and resp.strip():
+        return f"时间设置结果: {resp.strip()}"
     server.execute(f"time {mode} {time}")
     return f"已发送时间设置指令：time {mode} {time}"
 
@@ -275,6 +334,9 @@ def broadcast(source: CommandSource, ai_prefix: str, message: str):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在广播公告...")
     text = _json.dumps({"text": f"[公告] {message}", "color": "gold"}, ensure_ascii=False)
+    resp = rcon_exec(server, f"tellraw @a {text}")
+    if resp is not None and resp.strip():
+        return f"广播结果: {resp.strip()}"
     server.execute(f"tellraw @a {text}")
     return f"已广播: [公告] {message}"
 
@@ -310,6 +372,9 @@ def backup_manage(source: CommandSource, ai_prefix: str, action: str, slot: int 
     if action not in valid_actions:
         return f"未知操作: {action!r}，可选：{', '.join(sorted(valid_actions))}"
     if action == "list":
+        resp = rcon_exec(server, "!!qb list")
+        if resp is not None and resp.strip():
+            return f"备份列表: {resp.strip()}"
         server.execute("!!qb list")
         return "已请求备份列表，结果请查看聊天栏。若无响应，说明服务端未安装 quick_backup_multi 插件。"
     elif action == "make":
@@ -319,6 +384,9 @@ def backup_manage(source: CommandSource, ai_prefix: str, action: str, slot: int 
             safe_comment = comment.replace(";", "").replace("\n", " ").replace("\r", "")[:64]
             cmd += f" {safe_comment}"
         source.reply(f"{ai_prefix}正在创建新备份...")
+        resp = rcon_exec(server, cmd)
+        if resp is not None and resp.strip():
+            return f"创建备份结果: {resp.strip()}"
         server.execute(cmd)
         return "已触发创建新备份（存至槽位1，已有槽位后移）。若无响应，说明服务端未安装 quick_backup_multi 插件。"
     elif action == "back":
@@ -329,12 +397,21 @@ def backup_manage(source: CommandSource, ai_prefix: str, action: str, slot: int 
                 return f"slot 非法：{slot}，应为 1-10 的整数"
             cmd += f" {slot}"
         source.reply(f"{ai_prefix}正在发起回档请求（需再用 confirm 确认才生效）...")
+        resp = rcon_exec(server, cmd)
+        if resp is not None and resp.strip():
+            return f"回档请求结果: {resp.strip()}"
         server.execute(cmd)
         return "已发起回档请求。回档不会立即执行，需再调用 backup_manage(action='confirm') 确认后才真正回档。如需取消请用 action='abort'。"
     elif action == "confirm":
+        resp = rcon_exec(server, "!!qb confirm")
+        if resp is not None and resp.strip():
+            return f"确认回档结果: {resp.strip()}"
         server.execute("!!qb confirm")
         return "已发送确认指令，回档将开始执行。"
     elif action == "abort":
+        resp = rcon_exec(server, "!!qb abort")
+        if resp is not None and resp.strip():
+            return f"中断回档结果: {resp.strip()}"
         server.execute("!!qb abort")
         return "已中断回档流程。"
     return f"未知操作: {action}"

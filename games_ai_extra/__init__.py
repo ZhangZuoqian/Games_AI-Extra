@@ -1,7 +1,6 @@
 from mcdreforged.api.all import *
 import importlib
 import os
-import re as _re
 import zipfile
 
 from games_ai.register_extra_plugin import register_self
@@ -119,47 +118,8 @@ def on_load(server: PluginServerInterface, old):
 # MCDR 没有 on_player_death / on_player_chat 事件，统一用 on_user_info 解析：
 # - 玩家死亡由服务端输出死亡消息（info.is_from_server）触发
 # - 玩家聊天由玩家发言（info.is_player）触发
-
-# 死亡消息常见特征词（英文为主，覆盖 vanilla 死亡广播）
-_DEATH_KEYWORDS = (
-    "died", "was slain", "was shot", "fell", "drowned", "burned", "blew up",
-    "was blown up", "hit the ground", "withered", "starved", "was struck",
-    "was killed", "experienced kinetic energy", "went up in flames",
-    "淹死", "烧死", "炸死", "饿死", "摔死", "掉落",
-)
-
-# 匹配死亡广播：玩家名（2-16字符，不含空格）+ 空格 + 死亡描述（以关键词开头）
-# 用 {2,16} 排除 "I was slain..." 这类玩家聊天误判（"I" 为 1 字符），
-# 同时允许 2 字符的中文玩家名（如"张三"）
-_DEATH_PATTERN = _re.compile(
-    r"^\S{2,16}\s+(?:" + "|".join(
-        k.replace(" ", r"\s+") for k in _DEATH_KEYWORDS
-    ) + r")",
-    _re.IGNORECASE
-)
-
-
-def _try_record_death(server, content: str):
-    """尝试从服务端消息中解析死亡事件并记录到死亡日志。
-
-    先剥离颜色码，再用 _DEATH_PATTERN 正则精确匹配，避免玩家聊天含
-    "died"/"死" 等词被误判为死亡广播。
-    """
-    try:
-        from games_ai_extra.games_ai_tools.technical_server import on_player_death as _record
-        # 剥离 Minecraft 颜色码：§ 后跟一个字符
-        clean = _re.sub(r"§.", "", content).strip()
-        if not clean or not _DEATH_PATTERN.match(clean):
-            return
-        # 取消息第一个词作为玩家名
-        parts = clean.split(maxsplit=1)
-        player = parts[0] if parts else "unknown"
-        _record(server, player, clean)
-    except Exception as e:
-        try:
-            server.logger.warning(f"[games_ai_extra] 死亡记录失败: {e}")
-        except Exception:
-            pass
+# 死亡消息的解析/匹配逻辑统一放在 technical_server 模块（try_record_death），
+# 事件监听只负责按配置转发，避免解析逻辑散落在入口模块。
 
 
 def on_user_info(server, info):
@@ -180,7 +140,11 @@ def on_user_info(server, info):
         elif info.is_from_server:
             # 服务端消息 → 判断是否为死亡广播（若 technical_server 启用）
             if _CURRENT_CONFIG.get("technical_server", False):
-                _try_record_death(server, info.content)
+                try:
+                    from games_ai_extra.games_ai_tools.technical_server import try_record_death
+                    try_record_death(server, info.content)
+                except Exception as e:
+                    server.logger.warning(f"[games_ai_extra] 死亡记录失败: {e}")
     except Exception as e:
         try:
             server.logger.warning(f"[games_ai_extra] on_user_info 处理失败: {e}")

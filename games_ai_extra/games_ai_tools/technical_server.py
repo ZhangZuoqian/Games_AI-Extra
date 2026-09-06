@@ -6,11 +6,24 @@
 - 默认关闭，需在 config.json 同时开启 carpet 与 technical_server 才生效
 - 监听器由 __init__ 按配置决定是否记录
 """
+import re as _re
 import time
 from collections import deque
 
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool
+from games_ai_extra.games_ai_tools._rcon import rcon_exec
+
+
+def _try_rcon(server, command: str) -> str | None:
+    """RCON 执行并返回非空响应文本；RCON 不可用或命令无输出返回 None。
+
+    调用方拿到 None 时应回退到 server.execute。
+    """
+    resp = rcon_exec(server, command)
+    if resp is not None and resp.strip():
+        return resp.strip()
+    return None
 
 
 # 性能监控
@@ -39,6 +52,10 @@ def get_server_tps(source: CommandSource, ai_prefix: str, detail: bool = False):
         "t = min(20, 1000/m); "
         "print('MSPT='+m+' TPS='+t)"
     )
+    # 优先用 RCON 执行，能同步拿回 print 输出；RCON 未开启再回退 execute
+    resp = _try_rcon(server, f"script run {script}")
+    if resp is not None:
+        return f"服务器性能: {resp}"
     server.execute(f"script run {script}")
     if detail:
         # min/max/avg 定位偶发卡顿
@@ -83,6 +100,9 @@ def clear_entities(source: CommandSource, ai_prefix: str, entity_type: str, cent
     else:
         selector = f"@e[type={entity_type}]"
     source.reply(f"{ai_prefix}正在清理 {entity_type}...")
+    resp = _try_rcon(server, f"kill {selector}")
+    if resp is not None:
+        return f"清理结果: {resp}"
     server.execute(f"kill {selector}")
     return f"已发送清理指令：kill {selector}"
 
@@ -105,9 +125,15 @@ def carpet_rule_get(source: CommandSource, ai_prefix: str, rule: str = None):
     server = source.get_server()
     if rule:
         source.reply(f"{ai_prefix}正在查询 carpet 规则 {rule}...")
+        resp = _try_rcon(server, f"carpet {rule}")
+        if resp is not None:
+            return f"carpet 规则 {rule}: {resp}"
         server.execute(f"carpet {rule}")
     else:
         source.reply(f"{ai_prefix}正在列出所有 carpet 规则...")
+        resp = _try_rcon(server, "carpet list")
+        if resp is not None:
+            return f"carpet 规则列表: {resp}"
         server.execute("carpet list")
     return f"已发送 carpet 规则查询指令，结果请查看控制台/聊天栏"
 
@@ -145,6 +171,9 @@ def carpet_rule_set(source: CommandSource, ai_prefix: str, rule: str, value: str
     if value.lower() not in allowed_values and not is_number:
         return f"value 非法：{value!r}。只允许 true/false/数字 或常见枚举（default/optimized/precise）"
     source.reply(f"{ai_prefix}正在修改 carpet 规则 {rule} = {value}...")
+    resp = _try_rcon(server, f"carpet {rule} {value}")
+    if resp is not None:
+        return f"修改结果: {resp}"
     server.execute(f"carpet {rule} {value}")
     return f"已发送修改指令：carpet {rule} {value}。如失败请检查权限或规则名拼写"
 
@@ -179,6 +208,9 @@ def forceload(source: CommandSource, ai_prefix: str, action: str, from_pos: list
     server = source.get_server()
     if action == "query":
         source.reply(f"{ai_prefix}正在查询强加载区块...")
+        resp = _try_rcon(server, "forceload query")
+        if resp is not None:
+            return f"强加载区块: {resp}"
         server.execute("forceload query")
         return "已发送查询指令，结果请查看聊天栏"
     elif action == "add":
@@ -186,17 +218,28 @@ def forceload(source: CommandSource, ai_prefix: str, action: str, from_pos: list
             return "add 操作必须指定 from_pos"
         to = to_pos if to_pos else from_pos
         source.reply(f"{ai_prefix}正在添加强加载区块 {from_pos} -> {to}...")
-        server.execute(f"forceload add {from_pos[0]} {from_pos[1]} {to[0]} {to[1]}")
+        cmd = f"forceload add {from_pos[0]} {from_pos[1]} {to[0]} {to[1]}"
+        resp = _try_rcon(server, cmd)
+        if resp is not None:
+            return f"添加结果: {resp}"
+        server.execute(cmd)
         return f"已添加强加载区块 {from_pos} -> {to}"
     elif action == "remove":
         if not from_pos:
             return "remove 操作必须指定 from_pos"
         to = to_pos if to_pos else from_pos
         source.reply(f"{ai_prefix}正在移除强加载区块 {from_pos} -> {to}...")
-        server.execute(f"forceload remove {from_pos[0]} {from_pos[1]} {to[0]} {to[1]}")
+        cmd = f"forceload remove {from_pos[0]} {from_pos[1]} {to[0]} {to[1]}"
+        resp = _try_rcon(server, cmd)
+        if resp is not None:
+            return f"移除结果: {resp}"
+        server.execute(cmd)
         return f"已移除强加载区块 {from_pos} -> {to}"
     elif action == "remove_all":
         source.reply(f"{ai_prefix}正在移除所有强加载区块...")
+        resp = _try_rcon(server, "forceload remove all")
+        if resp is not None:
+            return f"移除结果: {resp}"
         server.execute("forceload remove all")
         return "已移除当前玩家所有强加载区块"
     return f"未知操作: {action}"
@@ -243,12 +286,16 @@ def locate_structure(source: CommandSource, ai_prefix: str, structure: str, pos:
     if pos:
         source.reply(f"{ai_prefix}正在从 {pos} 搜索 {sid}...")
         if source.is_player:
-            server.execute(f"execute at {source.player} positioned {pos[0]} ~ {pos[1]} run locate structure {sid}")
+            cmd = f"execute at {source.player} positioned {pos[0]} ~ {pos[1]} run locate structure {sid}"
         else:
-            server.execute(f"locate structure {sid}")
+            cmd = f"locate structure {sid}"
     else:
         source.reply(f"{ai_prefix}正在搜索附近的 {sid}...")
-        server.execute(f"locate structure {sid}")
+        cmd = f"locate structure {sid}"
+    resp = _try_rcon(server, cmd)
+    if resp is not None:
+        return f"结构位置: {resp}"
+    server.execute(cmd)
     return f"已发送 locate 指令，结果请查看聊天栏"
 
 
@@ -346,6 +393,9 @@ def query_death_log(source: CommandSource, ai_prefix: str, player: str = None, l
 def set_tickrate(source: CommandSource, ai_prefix: str, rate: float):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在设置 tick 速率为 {rate}...")
+    resp = _try_rcon(server, f"tick rate {rate}")
+    if resp is not None:
+        return f"tick 速率设置结果: {resp}"
     server.execute(f"tick rate {rate}")
     return f"已设置 tick 速率为 {rate}。注意：调试完后请用 set_tickrate(20) 恢复正常"
 
@@ -372,7 +422,11 @@ def set_tickrate(source: CommandSource, ai_prefix: str, rate: float):
 def scoreboard_query(source: CommandSource, ai_prefix: str, objective: str, target: str):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在查询 {target} 的 {objective} 分数...")
-    server.execute(f"scoreboard players get {target} {objective}")
+    cmd = f"scoreboard players get {target} {objective}"
+    resp = _try_rcon(server, cmd)
+    if resp is not None:
+        return f"{target} 的 {objective}: {resp}"
+    server.execute(cmd)
     return f"已发送查询指令：scoreboard players get {target} {objective}。结果请查看聊天栏"
 
 
@@ -400,7 +454,11 @@ def scoreboard_query(source: CommandSource, ai_prefix: str, objective: str, targ
 def scoreboard_set(source: CommandSource, ai_prefix: str, objective: str, target: str, score: int):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在设置 {target} 的 {objective} = {score}...")
-    server.execute(f"scoreboard players set {target} {objective} {score}")
+    cmd = f"scoreboard players set {target} {objective} {score}"
+    resp = _try_rcon(server, cmd)
+    if resp is not None:
+        return f"设置结果: {resp}"
+    server.execute(cmd)
     return f"已设置 {target} 的 {objective} = {score}"
 
 
@@ -430,19 +488,30 @@ def scoreboard_manage(source: CommandSource, ai_prefix: str, action: str, name: 
     server = source.get_server()
     if action == "list":
         source.reply(f"{ai_prefix}正在列出所有计分项...")
+        resp = _try_rcon(server, "scoreboard objectives list")
+        if resp is not None:
+            return f"计分项列表: {resp}"
         server.execute("scoreboard objectives list")
         return "已请求计分项列表，结果请查看聊天栏"
     elif action == "add":
         if not name:
             return "add 操作必须指定 name"
         source.reply(f"{ai_prefix}正在创建计分项 {name}（准则: {criterion}）...")
-        server.execute(f"scoreboard objectives add {name} {criterion}")
+        cmd = f"scoreboard objectives add {name} {criterion}"
+        resp = _try_rcon(server, cmd)
+        if resp is not None:
+            return f"创建结果: {resp}"
+        server.execute(cmd)
         return f"已创建计分项 {name}（准则: {criterion}）"
     elif action == "remove":
         if not name:
             return "remove 操作必须指定 name"
         source.reply(f"{ai_prefix}正在删除计分项 {name}...")
-        server.execute(f"scoreboard objectives remove {name}")
+        cmd = f"scoreboard objectives remove {name}"
+        resp = _try_rcon(server, cmd)
+        if resp is not None:
+            return f"删除结果: {resp}"
+        server.execute(cmd)
         return f"已删除计分项 {name}"
     return f"未知操作: {action}"
 
@@ -491,7 +560,6 @@ def query_player_stats(source: CommandSource, ai_prefix: str, player: str, stats
     if invalid:
         return f"未知统计项：{invalid}。可选：{list(_PLAYER_STATS_MAP.keys())}"
     # 玩家名校验（防命令注入：只允许字母数字下划线，3-16 字符）
-    import re as _re
     if not _re.fullmatch(r"\w{3,16}", player):
         return f"玩家名不合法：{player!r}（仅允许 3-16 个字母/数字/下划线）"
     server = source.get_server()
@@ -501,13 +569,18 @@ def query_player_stats(source: CommandSource, ai_prefix: str, player: str, stats
     hints = []
     for s in stats:
         criterion, label, unit_hint = _PLAYER_STATS_MAP[s]
-        server.execute(f"scoreboard players get {player} {s}")
-        h = f"{s}={label}"
-        if unit_hint:
-            h += f"（{unit_hint}）"
-        hints.append(h)
+        cmd = f"scoreboard players get {player} {s}"
+        resp = _try_rcon(server, cmd)
+        if resp is not None:
+            hints.append(f"{label}: {resp}（{s}）")
+        else:
+            server.execute(cmd)
+            h = f"{s}={label}"
+            if unit_hint:
+                h += f"（{unit_hint}）"
+            hints.append(h)
     hint_str = "；".join(hints)
-    return (f"已查询 {player} 的 {len(stats)} 项统计，结果在聊天栏。"
+    return (f"已查询 {player} 的 {len(stats)} 项统计。"
             f"如提示计分项不存在，需先创建：scoreboard objectives add <key> <criterion>。"
             f"统计项说明：{hint_str}")
 
@@ -522,8 +595,16 @@ def query_forceload_detail(source: CommandSource, ai_prefix: str):
     server = source.get_server()
     source.reply(f"{ai_prefix}正在查询所有维度的强加载区块...")
     # 逐维度查询：vanilla forceload query 只列当前执行维度
+    out = []
     for dim in ("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"):
-        server.execute(f"execute in {dim} run forceload query")
+        cmd = f"execute in {dim} run forceload query"
+        resp = _try_rcon(server, cmd)
+        if resp is not None:
+            out.append(f"{dim}: {resp}")
+        else:
+            server.execute(cmd)
+    if out:
+        return "各维度强加载区块:\n" + "\n".join(out)
     return ("已查询三个维度的强加载区块，结果在聊天栏。"
             "每个维度会显示该维度的 forceload 区块列表。"
             "注意：仅含 forceload 命令添加的区块，不含玩家/spawn 等其他加载来源。")
@@ -581,6 +662,10 @@ def query_entity_heatmap(source: CommandSource, ai_prefix: str, top: int = 5):
         f"print('--- 实体较多的区块（显示实体数>=5的）---'); "
         f"for(chunks, k -> if(chunks[k] >= 5, print('区块(' + k + '): ' + chunks[k] + ' 个实体')))"
     )
+    # 优先 RCON 拿结果（script 的 print 输出会进 RCON 响应）；未开启回退 execute
+    resp = _try_rcon(server, f"script run {script}")
+    if resp is not None:
+        return f"实体密度统计:\n{resp}"
     server.execute(f"script run {script}")
     return ("已执行实体密度统计，结果在聊天栏/控制台。"
             "输出包含：总实体数、按类型分布、实体较多的区块坐标（实体数>=5的才显示）。"
@@ -589,6 +674,48 @@ def query_entity_heatmap(source: CommandSource, ai_prefix: str, top: int = 5):
 
 
 # 监听玩家死亡事件（由 MCDR 事件触发，记录到内存）
+
+# 死亡消息常见特征词（英文为主，覆盖 vanilla 死亡广播）
+_DEATH_KEYWORDS = (
+    "died", "was slain", "was shot", "fell", "drowned", "burned", "blew up",
+    "was blown up", "hit the ground", "withered", "starved", "was struck",
+    "was killed", "experienced kinetic energy", "went up in flames",
+)
+
+# 匹配死亡广播：玩家名（2-16字符，不含空格）+ 空格 + 英文死亡描述（以关键词开头）
+# 或 玩家名 + 中文死亡描述（中文无空格分隔，如"张三被炸死了"）。
+# 用 {2,16} 排除 "I was slain..." 这类玩家聊天误判（"I" 为 1 字符），
+# 同时允许 2 字符的中文玩家名（如"张三"）。
+_DEATH_PATTERN = _re.compile(
+    r"^\S{2,16}(?:\s+|(?=[\u4e00-\u9fff]))(?:" +
+    "|".join(k.replace(" ", r"\s+") for k in _DEATH_KEYWORDS) +
+    r"|(?:被)?(?:炸死|淹死|烧死|饿死|摔死|杀死|掉落))",
+    _re.IGNORECASE
+)
+
+
+def try_record_death(server, content: str):
+    """从服务端消息中解析死亡事件并记录到死亡日志。
+
+    解析逻辑放在工具模块内（由 __init__.py 事件监听器调用），
+    先剥离颜色码，再用 _DEATH_PATTERN 正则精确匹配，避免玩家聊天含
+    "died"/"死" 等词被误判为死亡广播。
+    """
+    try:
+        # 剥离 Minecraft 颜色码：§ 后跟一个字符
+        clean = _re.sub(r"§.", "", content).strip()
+        if not clean or not _DEATH_PATTERN.match(clean):
+            return
+        # 取消息第一个词作为玩家名
+        parts = clean.split(maxsplit=1)
+        player = parts[0] if parts else "unknown"
+        on_player_death(server, player, clean)
+    except Exception as e:
+        try:
+            server.logger.warning(f"[games_ai_extra] 死亡记录失败: {e}")
+        except Exception:
+            pass
+
 
 def on_player_death(server, player, message):
     """MCDR 玩家死亡事件回调。高效：只记录关键字段到内存，O(1)。"""
