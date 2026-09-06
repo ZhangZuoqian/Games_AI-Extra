@@ -188,6 +188,15 @@ If a required dependency is not installed, the corresponding tools will return a
 
 ## What's New
 
+### Version 0.3.1
+
+Bot enhancements and RCON compatibility fixes.
+
+- **🤖 Precise bot teleport** — new `bot_teleport` tool that teleports bots precisely with `tp`: keeps inventory/HP/state (unlike `spawn`, no reset), supports cross-dimension (`dim`) and post-teleport facing (`facing`); integer x/z coordinates auto-align +0.5 to block center to avoid standing on block corners
+- **🪄 Bot spawn default** — `spawn_bot` without a position now spawns the bot next to the calling player; console invocation falls back to world spawn
+- **⚔️ Auto-combat** — new `bot_auto_combat` / `bot_stop_combat` tools: a Scarpet script scans for the nearest hostile mob within a radius, turns toward it and attacks continuously, with configurable radius and scan interval
+- **🔌 RCON compatibility fix** — adapts to MCDR 2.15.x API (`is_rcon_running` + `rcon_query`); economy/survival/technical/bot modules unify to RCON-first execution with automatic fallback to `server.execute`
+
 ### Version 0.2.0
 
 - Added `web_search` module: `search_minecraft_wiki` tool for searching the Minecraft Wiki (English or Chinese wiki based on the server language), available to both the AI and the Mineflayer Bot controller

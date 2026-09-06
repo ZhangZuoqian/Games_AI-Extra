@@ -3,6 +3,29 @@ import threading
 from mcdreforged.command.command_source import CommandSource
 from games_ai.games_ai_tool import register_tool, register_bot_tool
 
+
+def _rcon_exec(server, command: str) -> str | None:
+    """模块私有：RCON 优先执行一条控制台命令（普通命令专用）。
+
+    契约（与调用方约定）：
+    - 返回非空字符串 → RCON 通路成功，返回命令输出文本；
+    - 返回 None → RCON 未连接或发送失败，本函数内部已调用 server.execute 执行完该命令，
+      调用方禁止再次执行（防止同一条命令执行两遍）。
+    仅 send_command 阶段的通信异常输出 warning 日志；未连接属正常情况，安静降级。
+    """
+    # RCON 未连接：安静降级执行（正常情况，不打日志）
+    if not server.is_rcon_running():
+        server.execute(command)
+        return None
+    # RCON 已连接，尝试发送指令；rcon_query 内部已捕获通信异常并重试，失败返回 None
+    resp = server.rcon_query(command)
+    if resp is None:
+        # RCON 标记在线但通信失败，输出 warning 方便排查 RCON 网络问题
+        server.logger.warning("[games_ai_extra] RCON命令发送失败, 回退至server.execute模式")
+        server.execute(command)
+        return None
+    return resp
+
 @register_tool(description="在服务器中生成一个假人。可以指定坐标(pos)在特定位置生成，或指定玩家名(player)在某个玩家身边生成。pos 和 player 互斥，只能二选一。两个都不填则在世界出生点生成。可选指定维度(dim)在特定维度（如 minecraft:the_nether）生成：若同时指定 pos 则在维度指定坐标生成，若不指定 pos 则在维度 ~ ~ ~ 位置生成。创建假人后需通过其他工具控制其行为。", parameters={
     "type": "object",
     "properties": {
@@ -60,8 +83,14 @@ def spawn_bot(source: CommandSource, ai_prefix: str, name: str, pos: list | None
             server.execute(f"execute as {player} at @s run player {name} spawn")
             return f"假人 {name} 已生成在 {player} 的位置"
         else:
+            if source.is_player:
+                # 默认行为：不指定位置时，在召唤者（玩家）身边生成
+                source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.spawning_bot_near_player", name=name, player=source.player)}')
+                server.execute(f"execute as {source.player} at @s run player {name} spawn")
+                return f"假人 {name} 已生成在 {source.player} 身边"
+            # 控制台调用无召唤者：在世界出生点生成
             source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.spawning_bot", name=name)}')
-            server.execute(f"{cmd_prefix}player {name} spawn")
+            server.execute(f"player {name} spawn")
             return f"假人 {name} 已在出生点生成"
 
 @register_tool(description="移除（杀死）一个假人，假人将从服务器中消失。这个操作不可逆，如果之后还需要该假人，请使用 spawn_bot 重新生成。", parameters={
@@ -252,3 +281,148 @@ def bot_command(source: CommandSource, ai_prefix: str, name: str, command: str):
     source.reply(f'{ai_prefix}{server.rtr("games_ai_extra.tools.executing_player_command", command=full_cmd)}')
     server.execute(full_cmd)
     return f"已对假人 {name} 执行: /{full_cmd}"
+
+
+# 精准传送
+
+@register_tool(description="将假人精准传送到指定坐标。与重新生成(spawn)不同，传送会保留假人的物品栏、血量、状态与朝向，不会重置假人。支持跨维度传送（可选 dim）。可选让假人传送后立即看向某个坐标（facing，适合传送后直接面对目标）。[精准说明] 若传入的 x/z 为整数（方块坐标），会自动 +0.5 对齐到方块中心，避免假人站在方块交界/角上；传入小数坐标则按精确位置传送。", parameters={
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "假人的名字"
+        },
+        "pos": {
+            "type": "array",
+            "items": {
+                "type": "number"
+            },
+            "description": "目标坐标 [x, y, z]。x/z 为整数时会自动对齐方块中心（+0.5）；如需精确小数位置请传小数。y 为脚部高度坐标。"
+        },
+        "dim": {
+            "type": "string",
+            "description": "可选。目标维度 ID，如 minecraft:overworld、minecraft:the_nether、minecraft:the_end。不填则保持在当前维度传送"
+        },
+        "facing": {
+            "type": "array",
+            "items": {
+                "type": "number"
+            },
+            "description": "可选。传送后看向的坐标 [x, y, z]"
+        }
+    },
+    "required": ["name", "pos"]
+})
+@register_bot_tool()
+def bot_teleport(source: CommandSource, ai_prefix: str, name: str, pos: list, dim: str | None = None, facing: list | None = None):
+    if len(pos) != 3:
+        return f"坐标格式应为 [x, y, z]，你传入的是 {pos}"
+    if facing is not None and len(facing) != 3:
+        return f"facing 格式应为 [x, y, z]，你传入的是 {facing}"
+    server = source.get_server()
+    # 坐标归一化：整数 x/z 自动 +0.5 对齐方块中心，避免假人站在方块交界/角上
+    tx, ty, tz = (float(v) for v in pos)
+    if tx.is_integer():
+        tx += 0.5
+    if tz.is_integer():
+        tz += 0.5
+    if dim:
+        cmd = f"execute in {dim} run tp {name} {tx} {ty} {tz}"
+    else:
+        cmd = f"tp {name} {tx} {ty} {tz}"
+    if facing is not None:
+        cmd += f" facing {facing[0]} {facing[1]} {facing[2]}"
+    source.reply(f"{ai_prefix}正在将假人 {name} 传送到 {tx}, {ty}, {tz}..." + (f"（维度 {dim}）" if dim else ""))
+    # RCON 优先执行，能同步拿回 tp 输出（如 "Teleported X to ..."）；RCON 不可用自动降级 server.execute
+    resp = _rcon_exec(server, cmd)
+    if resp is not None and resp.strip():
+        return f"假人 {name} 传送完成: {resp.strip()}"
+    return f"假人 {name} 已传送到 {tx}, {ty}, {tz}" + (f"（维度 {dim}）" if dim else "") + (f"，朝向 {facing}" if facing is not None else "")
+
+
+# 自动索敌攻击
+
+@register_tool(description="让假人开启自动索敌攻击模式：自动扫描周围最近的敌对生物（怪物），转身看向它并持续攻击，直到目标死亡/消失后自动寻找下一个目标。可指定索敌半径和扫描间隔。注意：假人需手持武器才能造成伤害；使用 bot_stop_combat 可停止自动索敌。", parameters={
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "假人的名字"
+        },
+        "radius": {
+            "type": "integer",
+            "description": "可选。索敌半径（格），默认 16。半径越大扫描范围越广"
+        },
+        "interval": {
+            "type": "integer",
+            "description": "可选。扫描与攻击间隔（游戏刻，1 秒=20 刻），默认 10（0.5 秒）。调大更省性能，调小反应更快"
+        }
+    },
+    "required": ["name"]
+})
+@register_bot_tool()
+def bot_auto_combat(source: CommandSource, ai_prefix: str, name: str, radius: int = 16, interval: int = 10):
+    server = source.get_server()
+    if radius <= 0:
+        return f"索敌半径必须为正数，你输入的是 {radius}"
+    if interval <= 0:
+        return f"扫描间隔必须为正数，你输入的是 {interval}"
+    # 先卸载旧实例，再以新参数加载（避免重复启动多个循环）
+    server.execute("script unload bot_combat")
+    server.execute(f"script load bot_combat global {name} {radius} {interval}")
+    source.reply(f"{ai_prefix}假人 {name} 已开启自动索敌攻击（半径 {radius} 格，间隔 {interval} 刻）。请确保假人手持武器。")
+    return f"假人 {name} 已开启自动索敌攻击：自动检测半径 {radius} 格内最近的怪物并转向攻击。如需停止请调用 bot_stop_combat。"
+
+
+@register_tool(description="停止假人的自动索敌攻击模式。关闭 bot_auto_combat 开启的自动索敌循环，并让假人停止当前动作。", parameters={
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "假人的名字"
+        }
+    },
+    "required": ["name"]
+})
+@register_bot_tool()
+def bot_stop_combat(source: CommandSource, ai_prefix: str, name: str):
+    server = source.get_server()
+    server.execute("script unload bot_combat")
+    server.execute(f"player {name} stop")
+    return f"假人 {name} 已停止自动索敌攻击"
+
+
+@register_tool(description="让假人进入保护模式：假人自动跟随指定玩家，并攻击该玩家周围半径内的敌对生物，守护玩家安全。无怪物时假人保持在玩家身后跟随，有怪物时优先转向攻击怪物。可指定保护半径和扫描间隔。假人需手持武器才能造成伤害；使用 bot_stop_combat 可停止保护。", parameters={
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "假人的名字"
+        },
+        "player": {
+            "type": "string",
+            "description": "要保护的玩家名"
+        },
+        "radius": {
+            "type": "integer",
+            "description": "可选。保护/索敌半径（格），默认 8。以被保护玩家为中心"
+        },
+        "interval": {
+            "type": "integer",
+            "description": "可选。扫描与攻击间隔（游戏刻，1 秒=20 刻），默认 10（0.5 秒）"
+        }
+    },
+    "required": ["name", "player"]
+})
+@register_bot_tool()
+def bot_protect_player(source: CommandSource, ai_prefix: str, name: str, player: str, radius: int = 8, interval: int = 10):
+    server = source.get_server()
+    if radius <= 0:
+        return f"保护半径必须为正数，你输入的是 {radius}"
+    if interval <= 0:
+        return f"扫描间隔必须为正数，你输入的是 {interval}"
+    # 先卸载旧实例，再以保护模式加载（避免重复启动多个循环）
+    server.execute("script unload bot_combat")
+    server.execute(f"script load bot_combat global protect {name} {player} {radius} {interval}")
+    source.reply(f"{ai_prefix}假人 {name} 已开启保护模式，守护 {player}（半径 {radius} 格，间隔 {interval} 刻）。请确保假人手持武器。")
+    return f"假人 {name} 已开启保护模式：跟随 {player} 并自动攻击其周围 {radius} 格内的怪物。如需停止请调用 bot_stop_combat。"

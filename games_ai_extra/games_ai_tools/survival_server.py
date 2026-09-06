@@ -53,19 +53,18 @@ def _rcon_exec(server, command: str) -> str | None:
       调用方禁止再次执行（防止同一条命令执行两遍）。
     仅 send_command 阶段的通信异常输出 warning 日志；未连接属正常情况，安静降级。
     """
-    rcon = server.rcon
     # RCON 未连接：安静降级执行（正常情况，不打日志）
-    if not rcon.is_connected():
+    if not server.is_rcon_running():
         server.execute(command)
         return None
-    # RCON 已连接，尝试发送指令，仅这里捕获通信异常
-    try:
-        return rcon.send_command(command)
-    except Exception as exc:
+    # RCON 已连接，尝试发送指令；rcon_query 内部已捕获通信异常并重试，失败返回 None
+    resp = server.rcon_query(command)
+    if resp is None:
         # RCON 标记在线但通信失败，输出 warning 方便排查 RCON 网络问题
-        server.logger.warning(f"[games_ai_extra] RCON命令发送失败: {exc}, 回退至server.execute模式")
+        server.logger.warning("[games_ai_extra] RCON命令发送失败, 回退至server.execute模式")
         server.execute(command)
         return None
+    return resp
 
 
 def _execute_as_player(source: CommandSource, player_command: str, click_label: str, click_command: str, hint: str = "") -> str:
@@ -82,14 +81,9 @@ def _execute_as_player(source: CommandSource, player_command: str, click_label: 
             + (f"\n说明：{hint}" if hint else "")
         )
     server = source.get_server()
-    rcon = server.rcon
-    if rcon.is_connected():
+    if server.is_rcon_running():
         player_sel = f'@e[name="{source.player}",type=minecraft:player]'
-        try:
-            resp = rcon.send_command(f"/execute as {player_sel} run {player_command}")
-        except Exception as exc:
-            server.logger.warning(f"[games_ai_extra] RCON命令发送失败: {exc}, 回退至可点击消息")
-            resp = None
+        resp = server.rcon_query(f"/execute as {player_sel} run {player_command}")
         if resp is not None and resp.strip():
             return f"指令执行结果: {resp.strip()}"
     # RCON 未开启 / 开启但无返回 → 旧版可点击兜底

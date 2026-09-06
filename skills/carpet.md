@@ -47,6 +47,10 @@ Before performing **any control operation**, follow this workflow:
 | `bot_look` | Camera control | `name`, `target` |
 | `bot_hotbar` | Hotbar slot | `name`, `slot` (1~9) |
 | `bot_timed_action` | **Timed action (blocking)** | `name`, `action`, `duration` |
+| `bot_teleport` | **Precise teleport (keeps inventory/state)** | `name`, `pos`, `dim?`, `facing?` |
+| `bot_auto_combat` | **Auto-combat (scan + turn + attack)** | `name`, `radius?`, `interval?` |
+| `bot_protect_player` | **Protect a player (follow + attack mobs)** | `name`, `player`, `radius?`, `interval?` |
+| `bot_stop_combat` | **Stop combat/protect loop** | `name` |
 | `bot_command` | Raw custom command | `name`, `command` |
 
 ---
@@ -54,7 +58,7 @@ Before performing **any control operation**, follow this workflow:
 ## 1. Spawning a Fake Player
 
 ```
-# Spawn at world spawn
+# Default: spawn next to the calling player (console → world spawn)
 spawn_bot(name="Bob")
 
 # Spawn at specific coordinates
@@ -70,7 +74,7 @@ spawn_bot(name="Bob", pos=[100, 64, -50], dim="minecraft:the_nether")
 spawn_bot(name="Bob", dim="minecraft:the_end")
 ```
 
-- No parameters → spawns at **world spawn**
+- No parameters → spawns **next to the calling player** (if invoked by a player; console invocation falls back to **world spawn**)
 - `pos` (no `dim`) → spawns in the **Overworld** at the given coordinates, format `[x, y, z]`. ⚠️ `pos` and `player` are **mutually exclusive**
 - `player` → spawns next to that player. ⚠️ **Do NOT pass `pos` or `dim` when using `player`** — `player` is mutually exclusive with both. Only pass `name` and `player`
 - `dim` → spawns in the **specified dimension**. `dim` must be **exactly one of**: `"minecraft:overworld"`, `"minecraft:the_nether"`, `"minecraft:the_end"`. No other values allowed:
@@ -186,7 +190,49 @@ bot_timed_action(name="Bob", action="attack", duration=30)
 
 ---
 
-## 8. Typical Workflows
+## 8. Precise Teleport
+
+```
+# Teleport to a block position (integer x/z auto-centers to block center)
+bot_teleport(name="Bob", pos=[100, 64, -50])
+
+# Teleport and face a target afterwards
+bot_teleport(name="Bob", pos=[100, 64, -50], facing=[105, 64, -50])
+
+# Cross-dimension teleport
+bot_teleport(name="Bob", pos=[8, 64, 8], dim="minecraft:the_nether")
+```
+
+- Unlike `spawn_bot` (re-spawn), `bot_teleport` **keeps inventory, HP, state and facing** — no reset
+- **Integer x/z coordinates auto-align to block center** (+0.5) to avoid standing on block corners/edges; pass decimals for exact positions
+- `y` is the **feet height** coordinate
+- `facing` (optional) makes the bot look at that coordinate right after teleport — useful before attacking a target
+- Cross-dimension via optional `dim` (`minecraft:overworld` / `minecraft:the_nether` / `minecraft:the_end`)
+
+---
+
+## 9. Auto-Combat & Protect
+
+```
+# Auto-combat: scan nearest hostile mob around the bot, turn and attack
+bot_auto_combat(name="Bob", radius=16, interval=10)
+
+# Protect a player: follow them, attack hostile mobs around them
+bot_protect_player(name="Bob", player="Steve", radius=8, interval=10)
+
+# Stop any combat/protect loop
+bot_stop_combat(name="Bob")
+```
+
+- Bot **auto-turns toward the nearest hostile mob** — not a fixed direction; when the target dies/despawns it switches to the next one
+- Requires the bot to **hold a weapon** (`bot_hotbar`) to deal damage
+- `radius` = scan range (blocks); `interval` = scan/attack interval in ticks (1s = 20 ticks, default 10)
+- Protect mode: no mobs nearby → bot follows behind the protected player; mobs nearby → attacks them first
+- Stop with `bot_stop_combat`
+
+---
+
+## 10. Typical Workflows
 
 ### Scenario A: Create an AFK mob grinder bot
 > User: "Spawn a bot here to kill mobs"

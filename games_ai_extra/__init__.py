@@ -45,7 +45,7 @@ DEFAULT_CONFIG = {
 
 PLUGIN_METADATA = {
     "id": "games_ai_extra",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "name": "GamesAI Extra",
     "description":{
         "zh_cn": "GamesAI的功能性扩展",
@@ -66,6 +66,9 @@ _CURRENT_CONFIG: dict = {}
 def on_load(server: PluginServerInterface, old):
     global _CURRENT_CONFIG
     register_self(PLUGIN_METADATA.get("id", "games_ai_extra"))
+
+    # 确保假人自动索敌脚本已部署到服务器 scripts/ 目录（Carpet/scarpet 加载）
+    _ensure_bot_combat_script(server)
 
     # Register skill files
     # Supports both extracted directory (dev) and packed .mcdr zip (distribution)
@@ -112,6 +115,35 @@ def on_load(server: PluginServerInterface, old):
                 importlib.import_module(f"games_ai_extra.games_ai_tools.{project}")
             except Exception as e:
                 server.logger.error(f"[games_ai_extra] Failed to load tool module {project}: {e}")
+
+
+def _ensure_bot_combat_script(server: PluginServerInterface):
+    """确保服务器 scripts/bot_combat.sc 存在（假人自动索敌脚本，由 Carpet/scarpet 加载）。
+
+    打包模式从 .mcdr 压缩包读取，开发模式从文件系统读取；服务器 scripts/ 目录下
+    已存在同名脚本时跳过（以服务器上的版本为准）。
+    """
+    try:
+        working_dir = server.get_mcdr_config().get('working_directory', 'server')
+        scripts_dir = os.path.join(os.getcwd(), working_dir, 'scripts')
+        target = os.path.join(scripts_dir, 'bot_combat.sc')
+        if os.path.exists(target):
+            return
+        os.makedirs(scripts_dir, exist_ok=True)
+        _plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if os.path.isfile(_plugin_root):
+            # 打包为 .mcdr zip — 从压缩包内读取
+            with zipfile.ZipFile(_plugin_root, 'r') as zf:
+                content = zf.read('games_ai_extra/scripts/bot_combat.sc')
+        else:
+            # 解压目录（开发模式）— 从文件系统读取
+            with open(os.path.join(_plugin_root, 'games_ai_extra', 'scripts', 'bot_combat.sc'), 'rb') as f:
+                content = f.read()
+        with open(target, 'wb') as f:
+            f.write(content)
+        server.logger.info('[games_ai_extra] bot_combat.sc 已写入服务器 scripts/ 目录')
+    except Exception as e:
+        server.logger.warning(f'[games_ai_extra] 写入 bot_combat.sc 失败: {e}')
 
 
 # 事件监听

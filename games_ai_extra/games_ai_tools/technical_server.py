@@ -23,19 +23,18 @@ def _rcon_exec(server, command: str) -> str | None:
       调用方禁止再次执行（防止同一条命令执行两遍）。
     仅 send_command 阶段的通信异常输出 warning 日志；未连接属正常情况，安静降级。
     """
-    rcon = server.rcon
     # RCON 未连接：安静降级执行（正常情况，不打日志）
-    if not rcon.is_connected():
+    if not server.is_rcon_running():
         server.execute(command)
         return None
-    # RCON 已连接，尝试发送指令，仅这里捕获通信异常
-    try:
-        return rcon.send_command(command)
-    except Exception as exc:
+    # RCON 已连接，尝试发送指令；rcon_query 内部已捕获通信异常并重试，失败返回 None
+    resp = server.rcon_query(command)
+    if resp is None:
         # RCON 标记在线但通信失败，输出 warning 方便排查 RCON 网络问题
-        server.logger.warning(f"[games_ai_extra] RCON命令发送失败: {exc}, 回退至server.execute模式")
+        server.logger.warning("[games_ai_extra] RCON命令发送失败, 回退至server.execute模式")
         server.execute(command)
         return None
+    return resp
 
 
 # 性能监控
@@ -85,13 +84,8 @@ def get_server_tps(source: CommandSource, ai_prefix: str, detail: bool = False):
     # 优先用原版 /tick query（RCON 通路，同步拿回输出）。
     # TPS 是特例：不走通用 _rcon_exec 封装，直接用原生 RCON 接口执行。
     # 命令不可用（无该命令/解析失败）或 RCON 未开启 → 回退 carpet script 原方案。
-    rcon = server.rcon
-    if rcon.is_connected():
-        try:
-            resp = rcon.send_command("/tick query")
-        except Exception as exc:
-            server.logger.warning(f"[games_ai_extra] RCON命令发送失败: {exc}, 回退至carpet script")
-            resp = None
+    if server.is_rcon_running():
+        resp = server.rcon_query("/tick query")
         parsed = parse_tick_query(resp) if resp else None
         if parsed is not None:
             tps, mspt = parsed

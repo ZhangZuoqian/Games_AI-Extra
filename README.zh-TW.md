@@ -188,6 +188,15 @@ GamesAI Extra 透過 `register_skills()` 提供以下內建技能：
 
 ## 本次更新
 
+### Version 0.3.1
+
+假人增強與 RCON 相容修復。
+
+- **🤖 假人精準傳送** — 新增 `bot_teleport` 工具，用 `tp` 精準傳送假人：保留物品欄/血量/狀態（不會像 `spawn` 那樣重置），支援跨維度（`dim`）和傳送後朝向（`facing`）；傳入整數 x/z 座標會自動 +0.5 對齊方塊中心，避免站在方塊交界
+- **🪄 假人召喚預設行為** — `spawn_bot` 未指定位置時，改為在召喚者（玩家）身邊生成；主控台呼叫才回退到世界重生點
+- **⚔️ 假人自動索敵攻擊** — 新增 `bot_auto_combat` / `bot_stop_combat` 工具，透過 Scarpet 腳本自動掃描半徑內最近的敵對生物、轉向並持續攻擊，支援索敵半徑與掃描間隔參數
+- **🔌 RCON 相容修復** — 適配 MCDR 2.15.x API（`is_rcon_running` + `rcon_query`），經濟/生存/技術/假人各模組統一 RCON 優先執行、失敗自動降級 `server.execute`
+
 ### Version 0.2.0
 
 - 新增 `web_search` 模組：`search_minecraft_wiki` 工具，用於搜尋 Minecraft Wiki（根據伺服器語言自動選擇英文或中文 Wiki），AI 與 Mineflayer Bot 均可呼叫
